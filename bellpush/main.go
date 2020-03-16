@@ -1,53 +1,58 @@
 package main
 
 import (
-    "fmt"
-    "net/http"
-    "time"
+	"fmt"
+	"net/http"
+	"time"
 
-    "github.com/gorilla/websocket"
+	"github.com/gorilla/websocket"
 )
 
 var upgrader = websocket.Upgrader{
-    ReadBufferSize:  1024,
-    WriteBufferSize: 1024,
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 }
+
 //////////////////////// TODO - add some structure to this!! //////////////////////////////////
 //////////////////////// TODO - add error handling to sample code /////////////////////////////
+
 func main() {
-    lastPressed := time.Now()
-    _ = lastPressed
+	clientOutputChannels := make(map[chan []byte]bool)
 
-    // clientOutputChannels := []chan []byte{}
+	handleButtonPressed := func() {
+		message := []byte(fmt.Sprintf("Button pushed - %v", time.Now()))
+		for channel := range clientOutputChannels {
+			channel <- message // TODO - async send?
+		}
+	}
 
-    http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
-        conn, _ := upgrader.Upgrade(w, r, nil) // TODO error ignored for sake of simplicity
-	
-        for {
-            // Read message from browser
-            msgType, msg, err := conn.ReadMessage()
-            if err != nil {
-                return
-            }
+	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		conn, _ := upgrader.Upgrade(w, r, nil) // TODO error ignored for sake of simplicity
 
-            // Print the message to the console
-            fmt.Printf("%s sent: %s\n", conn.RemoteAddr(), string(msg))
+		outputChannel := make(chan []byte)
+		clientOutputChannels[outputChannel] = true
 
-            // Write message back to browser
-            if err = conn.WriteMessage(msgType, msg); err != nil {
-                return
-            }
-        }
-    })
+		for {
+			message := <- outputChannel
 
-    http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        http.ServeFile(w, r, "websockets.html")
-    })
+			fmt.Printf("%s: Sending %s\n", conn.RemoteAddr(), string(message))
 
-    http.HandleFunc("/push-button", func(w http.ResponseWriter, r *http.Request){
-        lastPressed = time.Now()
-    })
+			// Write message back to browser
+			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				delete(clientOutputChannels, outputChannel)
+				return
+			}
+		}
+	})
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "websockets.html")
+	})
+
+	http.HandleFunc("/push-button", func(w http.ResponseWriter, r *http.Request) {
+		handleButtonPressed()
+	})
 
 	fmt.Println("Starting server...")
-    http.ListenAndServe("0.0.0.0:8080", nil)
+	http.ListenAndServe("0.0.0.0:8080", nil)
 }
