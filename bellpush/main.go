@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/warthog618/gpio"
 )
 
 var upgrader = websocket.Upgrader{
@@ -17,6 +18,16 @@ var upgrader = websocket.Upgrader{
 //////////////////////// TODO - add error handling to sample code /////////////////////////////
 
 func main() {
+
+	_ = gpio.Open() // TODO - error handling
+	defer gpio.Close()
+
+	pin := gpio.NewPin(6)
+	pin.Input()
+	pin.Watch(gpio.EdgeRising, func(pin *gpio.Pin) {
+		fmt.Println("******** button!")
+	})
+
 	clientOutputChannels := make(map[chan []byte]bool)
 
 	handleButtonPressed := func() {
@@ -33,7 +44,7 @@ func main() {
 		clientOutputChannels[outputChannel] = true
 
 		for {
-			message := <- outputChannel
+			message := <-outputChannel
 
 			fmt.Printf("%s: Sending %s\n", conn.RemoteAddr(), string(message))
 
