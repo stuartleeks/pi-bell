@@ -10,13 +10,12 @@
 
 <body>
     <h1>Test page</h1>
-    <input id="input" type="text" />
     <button onclick="send()">Send</button>
     <pre id="output"></pre>
+    <script src="https://code.jquery.com/jquery-2.2.4.min.js"></script>
     <script>
-        var input = document.getElementById("input");
         var output = document.getElementById("output");
-        var socket = new WebSocket("ws://wfpi.lan:8080/echo"); // **************** HARDCODED Server address!!! *************
+        var socket = new WebSocket("ws://wfpi.lan:8080/doorbell"); // **************** HARDCODED Server address!!! *************
 
         socket.onopen = function () {
             output.innerHTML += "Status: Connected\n";
@@ -27,8 +26,7 @@
         };
 
         function send() {
-            socket.send(input.value);
-            input.value = "";
+            $.post("/push-button")
         }
     </script>
 </body>

@@ -1,4 +1,4 @@
-module github.com/stuartleeks/pi-bell/bellpush
+module github.com/stuartleeks/pi-bell
 
 go 1.14
 

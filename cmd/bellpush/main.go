@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stuartleeks/pi-bell/internal/pkg/gpio"
 	"github.com/warthog618/gpiod"
 )
 
@@ -23,27 +24,6 @@ const ButtonPinNumber int = 6
 //////////////////////// TODO - add some structure to this!! //////////////////////////////////
 //////////////////////// TODO - add error handling to sample code /////////////////////////////
 
-func setUpButtonPressListener(handler func(buttonPressed bool)) {
-	disableGpioEnv := os.Getenv("DISABLE_GPIO")
-	if strings.ToLower(disableGpioEnv) != "true" {
-		chip, err := gpiod.NewChip(ChipName)
-		if err != nil {
-			panic(err)
-		}
-		defer chip.Close()
-
-		line, err := chip.RequestLine(ButtonPinNumber, gpiod.WithBothEdges(func(evt gpiod.LineEvent) {
-			fmt.Printf("Got event: %v\n", evt.Type)
-			buttonPressed := true
-			if evt.Type == gpiod.LineEventFallingEdge {
-				buttonPressed = false
-			}
-			handler(buttonPressed)
-		}))
-		defer line.Close()
-	}
-}
-
 func main() {
 	clientOutputChannels := make(map[chan []byte]bool)
 	sendButtonPressedMessage := func() {
@@ -53,13 +33,27 @@ func main() {
 		}
 	}
 
-	setUpButtonPressListener(func(buttonPressed bool) {
-		if buttonPressed {
-			sendButtonPressedMessage()
-		} // TODO - handle button released
-	})
+	disableGpioEnv := os.Getenv("DISABLE_GPIO")
+	if strings.ToLower(disableGpioEnv) != "true" {
+		chip, err := gpiod.NewChip(ChipName)
+		if err != nil {
+			panic(err)
+		}
+		defer chip.Close()
 
-	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+		button, err := gpio.NewButton(chip, ButtonPinNumber, func(buttonPressed bool) {
+			if buttonPressed {
+				sendButtonPressedMessage()
+			} // TODO - handle button released
+		})
+		if err != nil {
+			panic(err)
+		}
+		defer button.Close()
+	}
+
+	// Set up web socket endpoint for pushing doorbell notifications
+	http.HandleFunc("/doorbell", func(w http.ResponseWriter, r *http.Request) {
 		conn, _ := upgrader.Upgrade(w, r, nil) // TODO error ignored for sake of simplicity
 
 		outputChannel := make(chan []byte)
@@ -78,10 +72,12 @@ func main() {
 		}
 	})
 
+	// Set up homepage for testing
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "websockets.html")
+		http.ServeFile(w, r, "./cmd/bellpush/websockets.html")
 	})
 
+	// Set up endpoint to trigger doorbell (e.g. if not running on the RaspberryPi)
 	http.HandleFunc("/push-button", func(w http.ResponseWriter, r *http.Request) {
 		sendButtonPressedMessage()
 	})
