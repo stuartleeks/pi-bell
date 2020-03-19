@@ -24,7 +24,9 @@ func main() {
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 
 	if strings.ToLower(disableGpioEnv) != "true" {
-		_ = gpio.Open() // TODO - error handling
+		if err := gpio.Open(); err != nil {
+			panic(err)
+		}
 		defer gpio.Close()
 
 		pin := gpio.NewPin(6)
