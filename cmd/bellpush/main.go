@@ -21,9 +21,6 @@ var upgrader = websocket.Upgrader{
 const ChipName string = "gpiochip0"
 const ButtonPinNumber int = 6
 
-//////////////////////// TODO - add some structure to this!! //////////////////////////////////
-//////////////////////// TODO - add error handling to sample code /////////////////////////////
-
 func main() {
 	clientOutputChannels := make(map[chan []byte]bool)
 	sendButtonPressedMessage := func() {
@@ -33,6 +30,7 @@ func main() {
 		}
 	}
 
+	// Set up Raspberry Pi button handler for bell push
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 	if strings.ToLower(disableGpioEnv) != "true" {
 		chip, err := gpiod.NewChip(ChipName)
@@ -54,7 +52,11 @@ func main() {
 
 	// Set up web socket endpoint for pushing doorbell notifications
 	http.HandleFunc("/doorbell", func(w http.ResponseWriter, r *http.Request) {
-		conn, _ := upgrader.Upgrade(w, r, nil) // TODO error ignored for sake of simplicity
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
 
 		outputChannel := make(chan []byte)
 		clientOutputChannels[outputChannel] = true
