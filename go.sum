@@ -72,6 +72,7 @@ github.com/modern-go/reflect2 v1.0.1/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3Rllmb
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
+github.com/pilebones/go-udev v0.0.0-20180820235104-043677e09b13/go.mod h1:MXAPLpvZeTqLpU1eO6kFXzU0uBMooSGc1MPXAcBoy1M=
 github.com/pkg/errors v0.8.0/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
@@ -109,6 +110,8 @@ github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljT
 github.com/warthog618/config v0.4.1/go.mod h1:IzcIkVay6dCubN3WBAJzPuqHyE1fTPxICvKTQ/2JA9g=
 github.com/warthog618/gpio v1.0.0 h1:jk16Fu1fLnUbqhC7O7Og/LerYegZYMYDQeXZYKbP6Zg=
 github.com/warthog618/gpio v1.0.0/go.mod h1:3yuGbOkcAcs8/pRFEnCnN7Qt2S+TkISbFXM+5gliAZM=
+github.com/warthog618/gpiod v0.4.0 h1:ofqe/mVvEGRyD2xvZA7VNP7q4fLjktSevnC9UV+3KPM=
+github.com/warthog618/gpiod v0.4.0/go.mod h1:uYebKyGrmSVW/RhgfbE+tbacr7eQ98jH9qX1hXvGwzY=
 github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2/go.mod h1:UETIi67q53MR2AWcXfiuqkDkRtnGDLqkBTpCHuJHxtU=
 github.com/xordataexchange/crypt v0.0.3-0.20170626215501-b2862e3d0a77/go.mod h1:aYKd//L2LvnjZzWKhF00oedf4jCCReLcmhLdhm1A27Q=
 go.etcd.io/bbolt v1.3.3/go.mod h1:IbVyRI1SCnLcuJnV2u8VeU0CEYM7e686BmAb1XKL+uU=

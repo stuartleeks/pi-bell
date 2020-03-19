@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/warthog618/gpio"
+	"github.com/warthog618/gpiod"
 )
 
 var upgrader = websocket.Upgrader{
@@ -16,34 +16,48 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// TODO - make these configurable
+const ChipName string = "gpiochip0"
+const ButtonPinNumber int = 6
+
 //////////////////////// TODO - add some structure to this!! //////////////////////////////////
 //////////////////////// TODO - add error handling to sample code /////////////////////////////
 
-func main() {
-
+func setUpButtonPressListener(handler func(buttonPressed bool)) {
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
-
 	if strings.ToLower(disableGpioEnv) != "true" {
-		if err := gpio.Open(); err != nil {
+		chip, err := gpiod.NewChip(ChipName)
+		if err != nil {
 			panic(err)
 		}
-		defer gpio.Close()
+		defer chip.Close()
 
-		pin := gpio.NewPin(6)
-		pin.Input()
-		pin.Watch(gpio.EdgeRising, func(pin *gpio.Pin) {
-			fmt.Println("******** button!")
-		})
+		line, err := chip.RequestLine(ButtonPinNumber, gpiod.WithBothEdges(func(evt gpiod.LineEvent) {
+			fmt.Printf("Got event: %v\n", evt.Type)
+			buttonPressed := true
+			if evt.Type == gpiod.LineEventFallingEdge {
+				buttonPressed = false
+			}
+			handler(buttonPressed)
+		}))
+		defer line.Close()
 	}
+}
 
+func main() {
 	clientOutputChannels := make(map[chan []byte]bool)
-
-	handleButtonPressed := func() {
+	sendButtonPressedMessage := func() {
 		message := []byte(fmt.Sprintf("Button pushed - %v", time.Now()))
 		for channel := range clientOutputChannels {
 			channel <- message // TODO - async send?
 		}
 	}
+
+	setUpButtonPressListener(func(buttonPressed bool) {
+		if buttonPressed {
+			sendButtonPressedMessage()
+		} // TODO - handle button released
+	})
 
 	http.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
 		conn, _ := upgrader.Upgrade(w, r, nil) // TODO error ignored for sake of simplicity
@@ -69,7 +83,7 @@ func main() {
 	})
 
 	http.HandleFunc("/push-button", func(w http.ResponseWriter, r *http.Request) {
-		handleButtonPressed()
+		sendButtonPressedMessage()
 	})
 
 	fmt.Println("Starting server...")
