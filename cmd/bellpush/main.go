@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -19,14 +21,18 @@ var upgrader = websocket.Upgrader{
 
 func main() {
 
-	_ = gpio.Open() // TODO - error handling
-	defer gpio.Close()
+	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 
-	pin := gpio.NewPin(6)
-	pin.Input()
-	pin.Watch(gpio.EdgeRising, func(pin *gpio.Pin) {
-		fmt.Println("******** button!")
-	})
+	if strings.ToLower(disableGpioEnv) != "true" {
+		_ = gpio.Open() // TODO - error handling
+		defer gpio.Close()
+
+		pin := gpio.NewPin(6)
+		pin.Input()
+		pin.Watch(gpio.EdgeRising, func(pin *gpio.Pin) {
+			fmt.Println("******** button!")
+		})
+	}
 
 	clientOutputChannels := make(map[chan []byte]bool)
 
