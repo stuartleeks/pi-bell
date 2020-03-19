@@ -9,3 +9,7 @@ run-bellpush-nogpio:
 
 build-bellpush:
 	go build -o bellpush ./cmd/bellpush/main.go 
+
+
+run-chime:
+	go run ./cmd/chime/main.go --addr=${DOORBELL}
