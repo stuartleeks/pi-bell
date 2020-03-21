@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/stuartleeks/pi-bell/internal/pkg/gpio"
+	"github.com/stuartleeks/pi-bell/internal/pkg/gpio-components"
 	"github.com/warthog618/gpiod"
 )
 
