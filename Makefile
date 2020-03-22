@@ -1,5 +1,7 @@
-rsync:
+rsync-wfpi:
 	rsync -r . pi@wfpi:/home/pi/source/pi-bell
+rsync-raspberrypi:
+	rsync -r . pi@raspberrypi:/home/pi/source/pi-bell
 
 run-bellpush:
 	go run ./cmd/bellpush/main.go
