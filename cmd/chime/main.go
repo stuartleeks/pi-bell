@@ -7,9 +7,9 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stuartleeks/pi-bell/internal/pkg/events"
 	"github.com/stuartleeks/pi-bell/internal/pkg/gpio-components"
 	"github.com/warthog618/gpiod"
 )
@@ -51,12 +51,25 @@ func main() {
 			messageType, buf, err := c.ReadMessage()
 			if err != nil {
 				log.Printf("Error reading: %v\n", err)
-				return
+				continue
 			}
 			log.Printf("Received: %v: %s\n", messageType, string(buf))
-			relay.On()
-			time.Sleep(500 * time.Millisecond)
-			relay.Off()
+			buttonEvent, err := events.ParseButtonEventJSON(buf)
+			if err != nil {
+				log.Printf("Error parsing: %v\n", err)
+				continue
+			}
+
+			switch buttonEvent.Type {
+			case events.ButtonPressed:
+				log.Println("Turning relay on")
+				relay.On()
+			case events.ButtonReleased:
+				log.Println("Turning relay off")
+				relay.Off()
+			default:
+				log.Printf("Unhandled ButtonEventType: \n", buttonEvent.Type)
+			}
 		}
 	}()
 

@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/stuartleeks/pi-bell/internal/pkg/events"
 	"github.com/stuartleeks/pi-bell/internal/pkg/gpio-components"
 	"github.com/warthog618/gpiod"
 )
@@ -18,15 +19,17 @@ var upgrader = websocket.Upgrader{
 }
 
 // TODO - make these configurable
+
 const ChipName string = "gpiochip0"
 const ButtonPinNumber int = 6
 
 func main() {
-	clientOutputChannels := make(map[chan []byte]bool)
-	sendButtonPressedMessage := func() {
-		message := []byte(fmt.Sprintf("Button pushed - %v", time.Now()))
+	clientOutputChannels := make(map[chan *events.ButtonEvent]bool)
+	sendButtonEvent := func(buttonEvent *events.ButtonEvent) {
+		jsonValue, err := buttonEvent.ToJSON()
+		log.Printf("ButtonEvent: %s (err: %s)\n", jsonValue, err)
 		for channel := range clientOutputChannels {
-			channel <- message // TODO - async send?
+			channel <- buttonEvent // TODO - async send?
 		}
 	}
 
@@ -41,8 +44,14 @@ func main() {
 
 		button, err := gpio.NewButton(chip, ButtonPinNumber, func(buttonPressed bool) {
 			if buttonPressed {
-				sendButtonPressedMessage()
-			} // TODO - handle button released
+				sendButtonEvent(&events.ButtonEvent{
+					Type: events.ButtonPressed,
+				})
+			} else {
+				sendButtonEvent(&events.ButtonEvent{
+					Type: events.ButtonReleased,
+				})
+			}
 		})
 		if err != nil {
 			panic(err)
@@ -58,16 +67,20 @@ func main() {
 			return
 		}
 
-		outputChannel := make(chan []byte)
+		outputChannel := make(chan *events.ButtonEvent)
 		clientOutputChannels[outputChannel] = true
 
 		for {
-			message := <-outputChannel
+			buttonEvent := <-outputChannel
 
-			fmt.Printf("%s: Sending %s\n", conn.RemoteAddr(), string(message))
+			message, err := buttonEvent.ToJSON()
+			if err != nil {
+				log.Printf("Error converting button event to JSON: %v\n", err)
+				continue
+			}
 
 			// Write message back to browser
-			if err := conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
 				delete(clientOutputChannels, outputChannel)
 				return
 			}
@@ -81,7 +94,9 @@ func main() {
 
 	// Set up endpoint to trigger doorbell (e.g. if not running on the RaspberryPi)
 	http.HandleFunc("/push-button", func(w http.ResponseWriter, r *http.Request) {
-		sendButtonPressedMessage()
+		sendButtonEvent(&events.ButtonEvent{
+			Type: events.ButtonPressed,
+		})
 	})
 
 	fmt.Println("Starting server...")
