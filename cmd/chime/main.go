@@ -32,12 +32,12 @@ func main() {
 	}
 	defer chip.Close()
 
-	led, err := gpio.NewLed(chip, 17)
+	led, err := gpio.NewLed(chip, 17) // TODO - make this configurable
 	if err != nil {
 		panic(err) // TODO - don't panic!
 	}
 
-	relay, err := gpio.NewRelay(chip, 18)
+	relay, err := gpio.NewRelay(chip, 18) // TODO - make this configurable
 	if err != nil {
 		panic(err) // TODO - don't panic!
 	}
