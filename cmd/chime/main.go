@@ -25,11 +25,29 @@ func main() {
 	flag.Parse()
 	address := addr
 
+	fmt.Println("Connecting to GPIO...")
+	chip, err := gpiod.NewChip(ChipName)
+	if err != nil {
+		panic(err) // TODO - don't panic!
+	}
+	defer chip.Close()
+
+	led, err := gpio.NewLed(chip, 17)
+	if err != nil {
+		panic(err) // TODO - don't panic!
+	}
+
+	relay, err := gpio.NewRelay(chip, 18)
+	if err != nil {
+		panic(err) // TODO - don't panic!
+	}
+	defer relay.Close()
+
 	interruptChan := make(chan os.Signal, 1)
 	signal.Notify(interruptChan, os.Interrupt)
 
 	for {
-		err := connectAndHandleEvents(interruptChan, address)
+		err := connectAndHandleEvents(interruptChan, address, led, relay)
 
 		if err == nil {
 			// handler returned so was interrupted by user
@@ -37,18 +55,42 @@ func main() {
 			break
 		}
 		log.Printf("Failed to connect: (%T) %v\n", err, err)
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 10; i++ {
 			select {
 			case <-interruptChan:
 				return
 			default:
-				time.Sleep(1 * time.Second)
+				led.Toggle()
+				time.Sleep(500 * time.Millisecond)
 			}
 		}
 	}
 }
 
-func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string) error {
+func blinkStatusLed(statusLed *gpio.Led) func() {
+	statusLed.Off()
+	ledStatusCancelChan := make(chan bool, 1)
+	go func() {
+		for {
+			statusLed.On()
+			time.Sleep(100 * time.Millisecond)
+			statusLed.Off()
+
+			for i := 0; i < 20; i++ {
+				select {
+				case <-ledStatusCancelChan:
+					return
+				default:
+					time.Sleep(500 * time.Millisecond)
+				}
+			}
+		}
+	}()
+	cancelLedBlink := func() { ledStatusCancelChan <- true }
+	return cancelLedBlink
+}
+
+func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.Led, relay *gpio.Relay) error {
 
 	u := url.URL{Scheme: "ws", Host: *address, Path: "/doorbell"}
 	log.Printf("connecting to %s", u.String())
@@ -60,18 +102,9 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string) err
 	}
 	defer c.Close()
 
-	fmt.Println("Connecting to GPIO...")
-	chip, err := gpiod.NewChip(ChipName)
-	if err != nil {
-		panic(err)
-	}
-	defer chip.Close()
-
-	relay, err := gpio.NewRelay(chip, 18)
-	if err != nil {
-		panic(err)
-	}
-	defer relay.Close()
+	// connected to bellpush -> start the status LED blinking
+	cancelLedBlink := blinkStatusLed(statusLed)
+	defer cancelLedBlink()
 
 	resultChan := make(chan error, 1)
 	log.Printf("Listening...\n")
@@ -80,8 +113,6 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string) err
 			messageType, buf, err := c.ReadMessage()
 			if err != nil {
 				log.Printf("Error reading:  (%T) %v\n", err, err) // TODO - check for websocket.CloseError and return to trigger reconnecting? (Currently panics for repeated read on failed connection in websocket code)
-				// resultChan <- err
-				// return
 				var closeError *websocket.CloseError
 				var opErr *net.OpError
 				if errors.As(err, &closeError) ||
@@ -89,6 +120,7 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string) err
 					resultChan <- err
 					return
 				}
+				// TODO - are there any errors here that make sense to continue?
 				continue
 			}
 			log.Printf("Received: %v: %s\n", messageType, string(buf))
