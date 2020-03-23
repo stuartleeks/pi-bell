@@ -25,8 +25,11 @@ func main() {
 	flag.Parse()
 	address := addr
 
+	interruptChan := make(chan os.Signal, 1)
+	signal.Notify(interruptChan, os.Interrupt)
+
 	for {
-		err := connectAndHandleEvents(address)
+		err := connectAndHandleEvents(interruptChan, address)
 
 		if err == nil {
 			// handler returned so was interrupted by user
@@ -34,13 +37,18 @@ func main() {
 			break
 		}
 		log.Printf("Failed to connect: (%T) %v\n", err, err)
-		time.Sleep(5 * time.Second)
+		for i := 0; i < 5; i++ {
+			select {
+			case <-interruptChan:
+				return
+			default:
+				time.Sleep(1 * time.Second)
+			}
+		}
 	}
 }
 
-func connectAndHandleEvents(address *string) error {
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
+func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string) error {
 
 	u := url.URL{Scheme: "ws", Host: *address, Path: "/doorbell"}
 	log.Printf("connecting to %s", u.String())
@@ -104,7 +112,7 @@ func connectAndHandleEvents(address *string) error {
 	}()
 
 	select {
-	case <-interrupt:
+	case <-interruptChan:
 		log.Println("Returning from connectAndHandleEvents - no error")
 		return nil
 	case err := <-resultChan:
