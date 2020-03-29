@@ -42,11 +42,43 @@ TODO add arguments/config for pins?
 
 ## Design
 
-### Doorbell
+### Bellpush
 
-TODO - components and pin connections
+The bell push (doorbell button) part is a bell push from a standard wired doorbell connected to `+5V` and `GPIO6`.
 
-TODO - web socket server
+```asciiart
+                     +----------------------------------------+
+                     |  Raspberry Pi                          |
+                     |                                        |
++------------+       |           +--------------------------+ |
+|            +---------+GPIO 6   | Web Server               | |
+|  Doorbell  |       |           |                          | |
+|            +----------+5V      | /doorbell                | |
++------------+       |           |    (web socket endpoint) | |
+                     |           |                          | |
+                     |           |                          | |
+                     |           +--------------------------+ |
+                     |                                        |
+                     +----------------------------------------+
+```
+
+There is a web server in the `bellpush` with a `/doorbell` endpoint for a websocker connection. When the bell push is pressed the server sends JSON event payloads to all connected clients.
+
+Button pressed event:
+
+```json
+{
+    "type": 0
+}
+```
+
+Button released event:
+
+```json
+{
+    "type": 1
+}
+```
 
 ### Chime
 
