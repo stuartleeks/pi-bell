@@ -36,9 +36,6 @@ To run the chime run the following command (note that the `DOORBELL` value needs
 DOORBELL=bellpush-pi make run-chime
 ```
 
-TODO set up and doc steps for building and running binaries rather than from source
-
-TODO add arguments/config for pins?
 
 ## Design
 
@@ -53,7 +50,7 @@ The bell push (doorbell button) part is a bell push from a standard wired doorbe
 +------------+       |           +--------------------------+ |
 |            +---------+GPIO 6   | Web Server               | |
 |  Doorbell  |       |           |                          | |
-|            +----------+5V      | /doorbell                | |
+|            +---------+5V       | /doorbell                | |
 +------------+       |           |    (web socket endpoint) | |
                      |           |                          | |
                      |           |                          | |
@@ -82,10 +79,34 @@ Button released event:
 
 ### Chime
 
-TODO - components and pin connections
+The chime part of the project controls the door chime. The chime is connected as to a transformer as per the instructions with the doorbell kit but with a relay in place of the bell push. The relay is connected to ground (`GND`), `+5V` and `GPIO 18`.
 
-TODO - client connection and retries (Status LED)
+In addition to the chime circuit there is a status LED to indicate whether the chime is connected to the bell push. When connected the status LED blinks every 10 seconds, when not connected it blinks rapidly.
 
-## Misc
+The chime app connects to the bell push and turns on the relay when it receives a button pressed event and turns it off for button released events.
 
-Capture TODOs as issues :-)
+```asciiart
+       +--------------+    To mains power
+       |              +-------------+
++------+ Transformer  |
+|      |              |
+|  +---+              |                           +----------------------------------------+
+|  |   +--------------+                           |  Raspberry Pi                          |
+|  |                                              |                                        |
+|  |  +---------------+      +------------+       |           +--------------------------+ |
+|  |  |               |      |            +---------+GND      | Chime app                | |
+|  |  |  Door chime   |      |  Relay     |       |           |                          | |
+|  |  |               |      |            +---------+GPIO 18  | Connects to web server   | |
+|  +---+T1        T3+---------+N/O        |       |           | on bell push             | |
+|     |               |      |            +---------+5V       |                          | |
++------+T2        T4+---------+COMMON     |       |           |                          | |
+      |               |      |            |       |           +--------------------------+ |
+      +---------------+      +------------+       |                                        |
+                                                  |                                        |
+              +-------------------------------------+GND                                   |
+              |                                   |                                        |
+              |   +-----------+     +-------+     |                                        |
+              +---+ Resistor  +-----+  LED  +-------+GPIO 17                               |
+                  | (330 ohms)|     |       |     |                                        |
+                  +-----------+     +-------+     +----------------------------------------+
+```
