@@ -36,7 +36,6 @@ func main() {
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 	if strings.ToLower(disableGpioEnv) != "true" {
 		raspberryPi := raspi.NewAdaptor()
-
 		defer raspberryPi.Finalize()
 
 		button := gpio.NewButtonDriver(raspberryPi, buttonPinNumber)
