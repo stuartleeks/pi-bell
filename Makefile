@@ -15,3 +15,6 @@ build-bellpush:
 
 run-chime:
 	go run ./cmd/chime/main.go --addr=${DOORBELL}
+
+build-chime:
+	go build -o chime ./cmd/chime/main.go
