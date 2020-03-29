@@ -8,4 +8,5 @@ require (
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/warthog618/gpio v1.0.0
 	github.com/warthog618/gpiod v0.4.0
+	gobot.io/x/gobot v1.14.0 // indirect
 )
