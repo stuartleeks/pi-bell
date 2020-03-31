@@ -42,6 +42,7 @@ func main() {
 	}
 	// Relay type is inverted to the actual relay - use Off() to trigger the chime and On() to disable
 	// (and Inverted option doesn't seem to work as it always writes 0 for off and 1 for on)
+	// Have opened a PR to address this: https://github.com/hybridgroup/gobot/pull/742
 	relay.On()
 
 	interruptChan := make(chan os.Signal, 1)
