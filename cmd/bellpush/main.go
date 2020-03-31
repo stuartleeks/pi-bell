@@ -9,8 +9,9 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/stuartleeks/pi-bell/internal/pkg/events"
-	"github.com/stuartleeks/pi-bell/internal/pkg/gpio-components"
-	"github.com/warthog618/gpiod"
+	"github.com/stuartleeks/pi-bell/internal/pkg/pi"
+	"gobot.io/x/gobot/drivers/gpio"
+	"gobot.io/x/gobot/platforms/raspi"
 )
 
 var upgrader = websocket.Upgrader{
@@ -18,10 +19,8 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
-// TODO - make these configurable
-
-const ChipName string = "gpiochip0"
-const ButtonPinNumber int = 6
+// TODO - make this configurable
+const buttonPinNumber string = pi.GPIO6
 
 func main() {
 	clientOutputChannels := make(map[chan *events.ButtonEvent]bool)
@@ -36,27 +35,25 @@ func main() {
 	// Set up Raspberry Pi button handler for bell push
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 	if strings.ToLower(disableGpioEnv) != "true" {
-		chip, err := gpiod.NewChip(ChipName)
-		if err != nil {
-			panic(err)
-		}
-		defer chip.Close()
+		raspberryPi := raspi.NewAdaptor()
+		defer raspberryPi.Finalize()
 
-		button, err := gpio.NewButton(chip, ButtonPinNumber, func(buttonPressed bool) {
-			if buttonPressed {
-				sendButtonEvent(&events.ButtonEvent{
-					Type: events.ButtonPressed,
-				})
-			} else {
-				sendButtonEvent(&events.ButtonEvent{
-					Type: events.ButtonReleased,
-				})
-			}
+		button := gpio.NewButtonDriver(raspberryPi, buttonPinNumber)
+		button.On(gpio.ButtonPush, func(s interface{}) {
+			sendButtonEvent(&events.ButtonEvent{
+				Type: events.ButtonPressed,
+			})
 		})
+		button.On(gpio.ButtonRelease, func(s interface{}) {
+			sendButtonEvent(&events.ButtonEvent{
+				Type: events.ButtonReleased,
+			})
+		})
+
+		err := button.Start()
 		if err != nil {
 			panic(err)
 		}
-		defer button.Close()
 	}
 
 	// Set up web socket endpoint for pushing doorbell notifications

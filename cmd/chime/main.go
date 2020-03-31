@@ -13,35 +13,37 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/stuartleeks/pi-bell/internal/pkg/events"
-	"github.com/stuartleeks/pi-bell/internal/pkg/gpio-components"
-	"github.com/warthog618/gpiod"
+	"github.com/stuartleeks/pi-bell/internal/pkg/pi"
+	"gobot.io/x/gobot/drivers/gpio"
+	"gobot.io/x/gobot/platforms/raspi"
 )
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
-
-const ChipName string = "gpiochip0"
 
 func main() {
 	flag.Parse()
 	address := addr
 
-	fmt.Println("Connecting to GPIO...")
-	chip, err := gpiod.NewChip(ChipName)
-	if err != nil {
-		panic(err) // TODO - don't panic!
-	}
-	defer chip.Close()
+	fmt.Println("Connecting to raspberry pi ...")
+	raspberryPi := raspi.NewAdaptor()
+	defer raspberryPi.Finalize()
 
-	led, err := gpio.NewLed(chip, 17) // TODO - make this configurable
+	led := gpio.NewLedDriver(raspberryPi, pi.GPIO17)
+
+	err := led.Start()
 	if err != nil {
 		panic(err) // TODO - don't panic!
 	}
 
-	relay, err := gpio.NewRelay(chip, 18) // TODO - make this configurable
+	relay := gpio.NewRelayDriver(raspberryPi, pi.GPIO18)
+	err = relay.Start()
 	if err != nil {
 		panic(err) // TODO - don't panic!
 	}
-	defer relay.Close()
+	// Relay type is inverted to the actual relay - use Off() to trigger the chime and On() to disable
+	// (and Inverted option doesn't seem to work as it always writes 0 for off and 1 for on)
+	// Have opened a PR to address this: https://github.com/hybridgroup/gobot/pull/742
+	relay.On()
 
 	interruptChan := make(chan os.Signal, 1)
 	signal.Notify(interruptChan, os.Interrupt)
@@ -67,7 +69,7 @@ func main() {
 	}
 }
 
-func blinkStatusLed(statusLed *gpio.Led) func() {
+func blinkStatusLed(statusLed *gpio.LedDriver) func() {
 	statusLed.Off()
 	ledStatusCancelChan := make(chan bool, 1)
 	go func() {
@@ -90,7 +92,7 @@ func blinkStatusLed(statusLed *gpio.Led) func() {
 	return cancelLedBlink
 }
 
-func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.Led, relay *gpio.Relay) error {
+func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.LedDriver, relay *gpio.RelayDriver) error {
 
 	u := url.URL{Scheme: "ws", Host: *address, Path: "/doorbell"}
 	log.Printf("connecting to %s", u.String())
@@ -131,12 +133,13 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 			}
 
 			switch buttonEvent.Type {
+			// NOTE - logic is inverted - see notes in setup
 			case events.ButtonPressed:
 				log.Println("Turning relay on")
-				relay.On()
+				relay.Off()
 			case events.ButtonReleased:
 				log.Println("Turning relay off")
-				relay.Off()
+				relay.On()
 			default:
 				log.Printf("Unhandled ButtonEventType: %v \n", buttonEvent.Type)
 			}
