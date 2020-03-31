@@ -18,3 +18,9 @@ run-chime:
 
 build-chime:
 	go build -o chime ./cmd/chime/main.go
+
+fmt:
+	find . -name '*.go' | grep -v vendor | xargs gofmt -s -w
+
+checks:
+	GO111MODULE=on golangci-lint run
