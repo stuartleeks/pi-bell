@@ -1,0 +1,36 @@
+run:
+  deadline: "5m"
+  skip-files: []
+
+linters-settings:
+  govet:
+    check-shadowing: true
+
+  gocyclo:
+    min-complexity: 12.0
+
+  maligned:
+    suggest-new: true
+
+  goconst:
+    min-len: 3.0
+    min-occurrences: 3.0
+
+  misspell:
+    locale: "US"
+
+linters:
+  disable-all: true
+  enable:
+    - vet
+    - golint
+    - gofmt
+    - deadcode
+    - varcheck
+    - structcheck
+    - misspell
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+  
