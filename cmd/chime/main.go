@@ -36,14 +36,13 @@ func main() {
 	}
 
 	relay := gpio.NewRelayDriver(raspberryPi, pi.GPIO18)
+	relay.Inverted = true
 	err = relay.Start()
 	if err != nil {
 		panic(err) // TODO - don't panic!
 	}
-	// Relay type is inverted to the actual relay - use Off() to trigger the chime and On() to disable
-	// (and Inverted option doesn't seem to work as it always writes 0 for off and 1 for on)
-	// Have opened a PR to address this: https://github.com/hybridgroup/gobot/pull/742
-	relay.On()
+	// TODO - when this PR is merged, remove the `replace` in go.mod: https://github.com/hybridgroup/gobot/pull/742
+	relay.Off()
 
 	interruptChan := make(chan os.Signal, 1)
 	signal.Notify(interruptChan, os.Interrupt)
@@ -136,10 +135,10 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 			// NOTE - logic is inverted - see notes in setup
 			case events.ButtonPressed:
 				log.Println("Turning relay on")
-				relay.Off()
+				relay.On()
 			case events.ButtonReleased:
 				log.Println("Turning relay off")
-				relay.On()
+				relay.Off()
 			default:
 				log.Printf("Unhandled ButtonEventType: %v \n", buttonEvent.Type)
 			}
