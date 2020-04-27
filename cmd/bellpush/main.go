@@ -20,7 +20,7 @@ var upgrader = websocket.Upgrader{
 }
 
 // TODO - make this configurable
-const buttonPinNumber string = pi.GPIO6
+const buttonPinNumber string = pi.GPIO17
 
 func main() {
 	clientOutputChannels := make(map[chan *events.ButtonEvent]bool)
