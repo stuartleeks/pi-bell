@@ -2,6 +2,14 @@ rsync-wfpi:
 	rsync -r . pi@wfpi:/home/pi/source/pi-bell
 rsync-raspberrypi:
 	rsync -r . pi@raspberrypi:/home/pi/source/pi-bell
+rsync-pibell-1:
+	rsync -r . pi@pibell-1:/home/pi/source/pi-bell
+rsync-pibell-2:
+	rsync -r . pi@pibell-2:/home/pi/source/pi-bell
+rsync-pibell-3:
+	rsync -r . pi@pibell-3:/home/pi/source/pi-bell
+
+
 
 run-bellpush:
 	go run ./cmd/bellpush/main.go
