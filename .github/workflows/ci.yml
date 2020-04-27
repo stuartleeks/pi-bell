@@ -20,3 +20,11 @@ jobs:
           go-version: '^1.14.1'
       - run: echo ${{ github.run_number }}
       - run: make build-bellpush build-chime
+      - uses: actions/upload-artifact@v1
+        with:
+          name: bellpush
+          path: bellpush
+      - uses: actions/upload-artifact@v1
+        with:
+          name: chime
+          path: chime
