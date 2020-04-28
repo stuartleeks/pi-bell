@@ -22,9 +22,32 @@ The general idea is to use a Raspberry Pi to detect when the doorbell is pressed
 
 Note - this repo is still currently optimised for my usage. For example the `Makefile` has commands for syncing to my Raspberry Pis :-)
 
-## Running the code
+## Installing
 
-To run the doorbell run the following command:
+There is an install.sh in the scripts folder that you can download and run (requires sudo), or if you trust random scripts on the internet you can run
+
+```bash
+wget -q -O - https://raw.githubusercontent.com/stuartleeks/pi-bell/master/scripts/install.sh | sudo bash
+```
+
+## Running
+
+To run the bellpush binary, run:
+
+```bash
+# skip qualified path if you've added /usr/local/bin/pi-bell to your PATH
+/usr/local/bin/pi-bell/bellpush
+```
+
+Then, assuming you ran the bellpush on `my-pi-1`, run the chime using
+
+```bash
+/user/local/bin/pi-bell/chime --addr=my-pi-1:8080
+```
+
+## Running from code
+
+To run the doorbell from code, run the following command:
 
 ```bash
 make run-bellpush
@@ -35,7 +58,6 @@ To run the chime run the following command (note that the `DOORBELL` value needs
 ```bash
 DOORBELL=bellpush-pi make run-chime
 ```
-
 
 ## Design
 
