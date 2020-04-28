@@ -42,7 +42,10 @@ func main() {
 		panic(err) // TODO - don't panic!
 	}
 	// TODO - when this PR is merged, remove the `replace` in go.mod: https://github.com/hybridgroup/gobot/pull/742
-	_ = relay.Off()
+	err = relay.Off()
+	if err != nil {
+		panic(err) // TODO - don't panic!
+	}
 
 	interruptChan := make(chan os.Signal, 1)
 	signal.Notify(interruptChan, os.Interrupt)
