@@ -1,0 +1,15 @@
+[Unit]
+Description=pi-bell bellpush service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pi-bell/bellpush
+WorkingDirectory=/usr/local/bin/pi-bell
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

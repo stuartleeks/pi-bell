@@ -30,7 +30,39 @@ There is an install.sh in the scripts folder that you can download and run (requ
 wget -q -O - https://raw.githubusercontent.com/stuartleeks/pi-bell/master/scripts/install.sh | sudo bash
 ```
 
-## Running
+This installs the `bellpush` and `chime` binaries to `/usr/local/bin/pi-bell`
+
+## Installing as services
+
+### bellpush
+
+TODO - flesh this out with steps
+
+```bash
+sudo cp scripts/pibell-bellpush.service /etc/systemd/system/pibell-bellpush.service
+sudo systemctl daemon-reload
+
+sudo systemctl start pibell-bellpush.service
+sudo systemctl stop pibell-bellpush.service
+sudo systemctl enable pibell-bellpush.service
+
+
+# Before copying, tweak the address for the bellpush
+# TODO make this configurable (e.g. via .pibell/chime-settings.json)
+sudo cp scripts/pibell-chime.service /etc/systemd/system/pibell-chime.service
+sudo systemctl daemon-reload
+
+sudo systemctl start pibell-chime.service
+sudo systemctl stop pibell-chime.service
+sudo systemctl enable pibell-chime.service
+
+
+
+cat /var/log/daemon.log
+tail -f /var/log/daemon.log
+```
+
+## Running interactively
 
 To run the bellpush binary, run:
 

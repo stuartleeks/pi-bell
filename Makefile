@@ -35,3 +35,9 @@ checks:
 
 release: checks build-bellpush build-chime
 	tar -czvf pi-bell.tar.gz chime bellpush
+
+
+install: build-bellpush build-chime
+	mkdir -p /usr/local/bin/pi-bell
+	cp bellpush /usr/local/bin/pi-bell
+	cp chime /usr/local/bin/pi-bell
