@@ -44,19 +44,20 @@ DOORBELL=bellpush-pi make run-chime
 The bell push (doorbell button) part is a bell push from a standard wired doorbell connected to `+5V` and `GPIO6`.
 
 ```asciiart
-                     +----------------------------------------+
-                     |  Raspberry Pi                          |
-                     |                                        |
-+------------+       |           +--------------------------+ |
-|            +---------+GPIO 6   | Web Server               | |
-|  Doorbell  |       |           |                          | |
-|            +---------+5V       | /doorbell                | |
-+------------+       |           |    (web socket endpoint) | |
-                     |           |                          | |
-                     |           |                          | |
-                     |           +--------------------------+ |
-                     |                                        |
-                     +----------------------------------------+
+                               +----------------------------------------+
+                               |  Raspberry Pi                          |
+                               |                                        |
+                    +-------+  |           +--------------------------+ |
+                  +-+ 10kΩ  +----+GND      | Web Server               | |
+                  | +-------+  |           |                          | |
++---------------+ |            |           | /doorbell                | |
+|               +-+--------------+GPIO 6   |    (web socket endpoint) | |
+| Doorbell      |              |           |                          | |
+|               +----------------+5V       |                          | |
++---------------+              |           +--------------------------+ |
+                               |                                        |
+                               +----------------------------------------+
+
 ```
 
 There is a web server in the `bellpush` with a `/doorbell` endpoint for a websocker connection. When the bell push is pressed the server sends JSON event payloads to all connected clients.
