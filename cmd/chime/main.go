@@ -26,7 +26,7 @@ func main() {
 
 	fmt.Println("Connecting to raspberry pi ...")
 	raspberryPi := raspi.NewAdaptor()
-	defer raspberryPi.Finalize()
+	defer raspberryPi.Finalize() // nolint:errcheck
 
 	led := gpio.NewLedDriver(raspberryPi, pi.GPIO17)
 
@@ -42,7 +42,7 @@ func main() {
 		panic(err) // TODO - don't panic!
 	}
 	// TODO - when this PR is merged, remove the `replace` in go.mod: https://github.com/hybridgroup/gobot/pull/742
-	relay.Off()
+	_ = relay.Off()
 
 	interruptChan := make(chan os.Signal, 1)
 	signal.Notify(interruptChan, os.Interrupt)
@@ -61,21 +61,24 @@ func main() {
 			case <-interruptChan:
 				return
 			default:
-				led.Toggle()
+				_ = led.Toggle()
 				time.Sleep(500 * time.Millisecond)
 			}
 		}
 	}
 }
 
-func blinkStatusLed(statusLed *gpio.LedDriver) func() {
-	statusLed.Off()
+func blinkStatusLed(statusLed *gpio.LedDriver) (func(), error) {
+	err := statusLed.Off()
+	if err != nil {
+		return nil, err
+	}
 	ledStatusCancelChan := make(chan bool, 1)
 	go func() {
 		for {
-			statusLed.On()
+			_ = statusLed.On() // TODO - report errors from here so that the main loop can be restarted
 			time.Sleep(100 * time.Millisecond)
-			statusLed.Off()
+			_ = statusLed.Off()
 
 			for i := 0; i < 20; i++ {
 				select {
@@ -88,7 +91,7 @@ func blinkStatusLed(statusLed *gpio.LedDriver) func() {
 		}
 	}()
 	cancelLedBlink := func() { ledStatusCancelChan <- true }
-	return cancelLedBlink
+	return cancelLedBlink, nil
 }
 
 func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.LedDriver, relay *gpio.RelayDriver) error {
@@ -104,7 +107,11 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 	defer c.Close()
 
 	// connected to bellpush -> start the status LED blinking
-	cancelLedBlink := blinkStatusLed(statusLed)
+	cancelLedBlink, err := blinkStatusLed(statusLed)
+	if err != nil {
+		err = fmt.Errorf("failed to set status led blinking: %v", err)
+		return err
+	}
 	defer cancelLedBlink()
 
 	resultChan := make(chan error, 1)
@@ -135,10 +142,16 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 			// NOTE - logic is inverted - see notes in setup
 			case events.ButtonPressed:
 				log.Println("Turning relay on")
-				relay.On()
+				if err := relay.On(); err != nil {
+					resultChan <- err
+					return
+				}
 			case events.ButtonReleased:
 				log.Println("Turning relay off")
-				relay.Off()
+				if err := relay.Off(); err != nil {
+					resultChan <- err
+					return
+				}
 			default:
 				log.Printf("Unhandled ButtonEventType: %v \n", buttonEvent.Type)
 			}

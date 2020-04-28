@@ -36,21 +36,27 @@ func main() {
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 	if strings.ToLower(disableGpioEnv) != "true" {
 		raspberryPi := raspi.NewAdaptor()
-		defer raspberryPi.Finalize()
+		defer raspberryPi.Finalize() // nolint:errcheck
 
 		button := gpio.NewButtonDriver(raspberryPi, buttonPinNumber)
-		button.On(gpio.ButtonPush, func(s interface{}) {
+		err := button.On(gpio.ButtonPush, func(s interface{}) {
 			sendButtonEvent(&events.ButtonEvent{
 				Type: events.ButtonPressed,
 			})
 		})
-		button.On(gpio.ButtonRelease, func(s interface{}) {
+		if err != nil {
+			panic(err)
+		}
+		err = button.On(gpio.ButtonRelease, func(s interface{}) {
 			sendButtonEvent(&events.ButtonEvent{
 				Type: events.ButtonReleased,
 			})
 		})
+		if err != nil {
+			panic(err)
+		}
 
-		err := button.Start()
+		err = button.Start()
 		if err != nil {
 			panic(err)
 		}
@@ -97,5 +103,8 @@ func main() {
 	})
 
 	fmt.Println("Starting server...")
-	http.ListenAndServe("0.0.0.0:8080", nil)
+	err := http.ListenAndServe("0.0.0.0:8080", nil)
+	if err != nil {
+		panic(err)
+	}
 }
