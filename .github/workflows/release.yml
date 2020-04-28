@@ -15,6 +15,8 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: '^1.14.1'
+      - name: Install golangci-lint
+        run: GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.25.1
       - run: make release
       - name: Create Release
         id: create_release
