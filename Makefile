@@ -34,8 +34,7 @@ checks:
 	GO111MODULE=on golangci-lint run
 
 release: checks build-bellpush build-chime
-	tar -czvf pi-bell.tar.gz chime bellpush
-
+	tar -czvf pi-bell.tar.gz chime bellpush scripts/pibell-bellpush.service scripts/pibell-chime.service
 
 install: build-bellpush build-chime
 	mkdir -p /usr/local/bin/pi-bell
