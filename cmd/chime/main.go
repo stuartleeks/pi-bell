@@ -113,7 +113,6 @@ func main() {
 }
 
 func blinkStatusLed(statusLed *gpio.LedDriver, durationBetweenFlashes time.Duration) (CancellableOperation, error) {
-	log.Println("**BlinkStatusLed: starting")
 	err := statusLed.Off()
 	if err != nil {
 		err = fmt.Errorf("Failed to turn led off: %v", err)
@@ -136,7 +135,6 @@ func blinkStatusLed(statusLed *gpio.LedDriver, durationBetweenFlashes time.Durat
 			for waiting := true; waiting; {
 				select {
 				case <-ledStatusCancelChan:
-					log.Println("**BlinkStatusLed: done")
 					return
 				default:
 					if time.Now().After(waitEnd) {
