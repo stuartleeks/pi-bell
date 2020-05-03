@@ -4,11 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-# TODO - look up env file to set chime address :-)
-# ExecStartPre=/usr/bin/gpio mode 1 in
-# ExecStartPre=/usr/bin/gpio readall
-# ExecStartPre=/usr/bin/whoami
-ExecStart=/usr/local/bin/pi-bell/chime --addr=pibell-1:8080
+EnvironmentFile=/usr/local/bin/pi-bell/chime.env
+ExecStart=/usr/local/bin/pi-bell/chime --addr=${BELLPUSH}
 WorkingDirectory=/usr/local/bin/pi-bell
 StandardOutput=inherit
 StandardError=inherit

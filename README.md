@@ -48,6 +48,12 @@ At this point the pibell-bellpush service is installed and will start when you r
 
 ### chime
 
+Before continuing, edit the `/usr/local/bin/pi-bell/chime.env` to set the address of the bellpush the chime should connect to. In the example below the chime will attempt to connect to port `8080` on the `pibell-1`.
+
+```env
+BELLPUSH=pibell-1:8080
+```
+
 To run the chime as a service, run the following commands.
 
 ```bash
