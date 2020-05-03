@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -20,11 +21,44 @@ import (
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
 
+// CancellableOperation represents an ongoing cancellable operation
+type CancellableOperation interface {
+	IsRunning() bool
+	Cancel() bool
+}
+
+type safeCancellableOperation struct {
+	running     bool
+	innerCancel func()
+}
+
+var _ CancellableOperation = &safeCancellableOperation{}
+
+func (o *safeCancellableOperation) IsRunning() bool {
+	return o.running
+}
+func (o *safeCancellableOperation) Cancel() bool {
+	if o.IsRunning() {
+		o.running = false
+		o.innerCancel()
+		return true
+	}
+	return false
+}
+
+// NewSafeCancellableOperation returns a CancellableOperation that prevents Cancel being called multiple times
+func NewSafeCancellableOperation(cancel func()) CancellableOperation {
+	return &safeCancellableOperation{
+		running:     true,
+		innerCancel: cancel,
+	}
+}
+
 func main() {
 	flag.Parse()
 	address := addr
 
-	fmt.Println("Connecting to raspberry pi ...")
+	log.Println("Connecting to raspberry pi ...")
 	raspberryPi := raspi.NewAdaptor()
 	defer raspberryPi.Finalize() // nolint:errcheck
 
@@ -51,71 +85,100 @@ func main() {
 	signal.Notify(interruptChan, os.Interrupt)
 
 	for {
-		err := connectAndHandleEvents(interruptChan, address, led, relay)
-
+		connecting, err := blinkStatusLed(led, 1*time.Second)
+		if err != nil {
+			panic(err) // TODO - don't panic!
+		}
+		err = connectAndHandleEvents(interruptChan, address, led, relay, connecting)
 		if err == nil {
 			// handler returned so was interrupted by user
 			log.Println("Exiting")
 			break
 		}
+
 		log.Printf("Failed to connect: (%T) %v\n", err, err)
 		for i := 0; i < 10; i++ {
 			select {
 			case <-interruptChan:
 				return
 			default:
-				_ = led.Toggle()
+				err = led.Toggle()
+				if err != nil {
+					panic(err) // TODO - don't panic!
+				}
 				time.Sleep(500 * time.Millisecond)
 			}
 		}
 	}
 }
 
-func blinkStatusLed(statusLed *gpio.LedDriver) (func(), error) {
+func blinkStatusLed(statusLed *gpio.LedDriver, durationBetweenFlashes time.Duration) (CancellableOperation, error) {
 	err := statusLed.Off()
 	if err != nil {
+		err = fmt.Errorf("Failed to turn led off: %v", err)
 		return nil, err
 	}
 	ledStatusCancelChan := make(chan bool, 1)
 	go func() {
 		for {
-			_ = statusLed.On() // TODO - report errors from here so that the main loop can be restarted
+			err = statusLed.On() // TODO - report errors from here so that the main loop can be restarted
+			if err != nil {
+				panic(err) // TODO - don't panic!
+			}
 			time.Sleep(100 * time.Millisecond)
-			_ = statusLed.Off()
+			err = statusLed.Off()
+			if err != nil {
+				panic(err) // TODO - don't panic!
+			}
 
-			for i := 0; i < 20; i++ {
+			waitEnd := time.Now().Add(durationBetweenFlashes)
+			for waiting := true; waiting; {
 				select {
 				case <-ledStatusCancelChan:
 					return
 				default:
+					if time.Now().After(waitEnd) {
+						waiting = false
+						continue
+					}
+
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
 		}
 	}()
 	cancelLedBlink := func() { ledStatusCancelChan <- true }
-	return cancelLedBlink, nil
+	cancellableOperation := NewSafeCancellableOperation(cancelLedBlink)
+	return cancellableOperation, nil
 }
 
-func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.LedDriver, relay *gpio.RelayDriver) error {
+func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.LedDriver, relay *gpio.RelayDriver, connectingStatusBlink CancellableOperation) error {
+
+	defer connectingStatusBlink.Cancel() // ensure we cancel the connecting status blink on error etc
 
 	u := url.URL{Scheme: "ws", Host: *address, Path: "/doorbell"}
 	log.Printf("connecting to %s", u.String())
 
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	dialer := &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 10 * time.Second,
+	}
+
+	c, _, err := dialer.Dial(u.String(), nil)
 	if err != nil {
 		err = fmt.Errorf("dial to %s failed: %v", u.String(), err)
 		return err
 	}
 	defer c.Close()
 
-	// connected to bellpush -> start the status LED blinking
-	cancelLedBlink, err := blinkStatusLed(statusLed)
+	// connected to bellpush -> cancel the connecting blink and working blinking
+	connectingStatusBlink.Cancel()
+	runningStatusBlink, err := blinkStatusLed(statusLed, 10*time.Second)
 	if err != nil {
 		err = fmt.Errorf("failed to set status led blinking: %v", err)
 		return err
 	}
-	defer cancelLedBlink()
+	defer runningStatusBlink.Cancel()
 
 	resultChan := make(chan error, 1)
 	log.Printf("Listening...\n")

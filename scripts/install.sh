@@ -1,4 +1,13 @@
+#!/bin/bash
 set -e
+
+#
+# This script downloads the latest builds of pi-bell from GitHub releases
+# and copies them to /usr/local/bin/pi-bell
+# For details of setting as systemd services and configuration 
+# see https://github.com/stuartleeks/pi-bell/blob/master/README.md
+#
+
 
 INSTALL_FOLDER="/usr/local/bin/pi-bell"
 
@@ -18,3 +27,4 @@ tar -xzvf /tmp/pi-bell.tar.gz -C "$INSTALL_FOLDER"
 
 
 echo "Add $INSTALL_FOLDER to your PATH"
+

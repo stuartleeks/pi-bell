@@ -22,7 +22,7 @@ The general idea is to use a Raspberry Pi to detect when the doorbell is pressed
 
 Note - this repo is still currently optimised for my usage. For example the `Makefile` has commands for syncing to my Raspberry Pis :-)
 
-## Installing
+## Installing binaries
 
 There is an install.sh in the scripts folder that you can download and run (requires sudo), or if you trust random scripts on the internet you can run
 
@@ -30,7 +30,58 @@ There is an install.sh in the scripts folder that you can download and run (requ
 wget -q -O - https://raw.githubusercontent.com/stuartleeks/pi-bell/master/scripts/install.sh | sudo bash
 ```
 
-## Running
+This installs the `bellpush` and `chime` binaries to `/usr/local/bin/pi-bell`
+
+## Installing as services
+
+### bellpush
+
+To run the bellpush as a service, run the following commands.
+
+```bash
+sudo cp /usr/local/bin/pi-bell/pibell-bellpush.service /etc/systemd/system/pibell-bellpush.service
+sudo systemctl daemon-reload
+sudo systemctl enable pibell-bellpush.service
+```
+
+At this point the pibell-bellpush service is installed and will start when you restart your pi.
+
+### chime
+
+Before continuing, edit the `/usr/local/bin/pi-bell/chime.env` to set the address of the bellpush the chime should connect to. In the example below the chime will attempt to connect to port `8080` on the `pibell-1`.
+
+```env
+BELLPUSH=pibell-1:8080
+```
+
+To run the chime as a service, run the following commands.
+
+```bash
+sudo cp /usr/local/bin/pi-bell/pibell-chime.service /etc/systemd/system/pibell-chime.service
+sudo systemctl daemon-reload
+sudo systemctl enable pibell-chime.service
+```
+
+At this point the pibell-chime service is installed and will start when you restart your pi.
+
+### Troubleshooting
+
+The commands below can be useful when troubleshooting the services.
+
+```bash
+cat /var/log/daemon.log
+# or
+tail -f /var/log/daemon.log
+
+# Get logs for chime
+sudo journalctl | grep chime
+# Get logs for bellpush
+sudo journalctl | grep bellpush
+# Follow the journalctl log
+sudo journalctl -fe
+```
+
+## Running interactively
 
 To run the bellpush binary, run:
 
