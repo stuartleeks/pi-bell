@@ -184,3 +184,18 @@ The chime app connects to the bell push and turns on the relay when it receives 
                   | (330 ohms)|     |       |     |                                        |
                   +-----------+     +-------+     +----------------------------------------+
 ```
+
+## Changelog
+
+### 0.2.0
+
+* Add systemd unit files for running bellpush and chime as a service
+* Fix bug in status LED when attempting to connect
+
+### 0.1.1
+
+* Add install script
+
+### 0.1.0
+
+Initial release
