@@ -32,7 +32,7 @@ wget -q -O - https://raw.githubusercontent.com/stuartleeks/pi-bell/master/script
 
 This installs the `bellpush` and `chime` binaries to `/usr/local/bin/pi-bell`
 
-## Installing as services
+## Running as services
 
 ### bellpush
 
@@ -198,4 +198,4 @@ The chime app connects to the bell push and turns on the relay when it receives 
 
 ### 0.1.0
 
-Initial release
+Initial release#@
