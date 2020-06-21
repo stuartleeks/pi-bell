@@ -5,7 +5,7 @@ set -e
 # This script downloads the latest builds of pi-bell from GitHub releases
 # and copies them to /usr/local/bin/pi-bell
 # For details of setting as systemd services and configuration 
-# see https://github.com/stuartleeks/pi-bell/blob/master/README.md
+# see https://github.com/stuartleeks/pi-bell/blob/main/README.md
 #
 
 

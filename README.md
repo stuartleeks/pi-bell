@@ -27,7 +27,7 @@ Note - this repo is still currently optimised for my usage. For example the `Mak
 There is an install.sh in the scripts folder that you can download and run (requires sudo), or if you trust random scripts on the internet you can run
 
 ```bash
-wget -q -O - https://raw.githubusercontent.com/stuartleeks/pi-bell/master/scripts/install.sh | sudo bash
+wget -q -O - https://raw.githubusercontent.com/stuartleeks/pi-bell/main/scripts/install.sh | sudo bash
 ```
 
 This installs the `bellpush` and `chime` binaries to `/usr/local/bin/pi-bell`
