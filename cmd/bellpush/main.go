@@ -90,6 +90,11 @@ func main() {
 		}
 	})
 
+	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/html")
+		w.Write([]byte("<html><body><h1>pong</h1></body></html>"))
+	})
+
 	// Set up homepage for testing
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./cmd/bellpush/websockets.html")
