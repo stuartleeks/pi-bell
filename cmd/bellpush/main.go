@@ -92,7 +92,7 @@ func main() {
 
 	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Content-Type", "text/html")
-		w.Write([]byte("<html><body><h1>pong</h1></body></html>"))
+		_, _ = w.Write([]byte("<html><body><h1>pong</h1></body></html>"))
 	})
 
 	// Set up homepage for testing
