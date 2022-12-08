@@ -15,18 +15,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Install Make
-        run: sudo apt update && sudo apt install build-essential -y
-      - uses: actions/setup-go@v2
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1 
         with:
-          go-version: '^1.14.1'
-      - name: Install golangci-lint
-        run: GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.25.1
-      - run: make release
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build in dev container
+        uses: devcontainers/ci@v0.2
+        id: build
+        with:
+          imageName: ghcr.io/stuartleeks/pi-bell-devcontainer
+          runCmd: |
+            GO111MODULE=on go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.25.1
+            make release
+
       - uses: actions/upload-artifact@v1
         with:
           name: bellpush
           path: bellpush
+
       - uses: actions/upload-artifact@v1
         with:
           name: chime
