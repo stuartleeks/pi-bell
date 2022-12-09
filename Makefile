@@ -26,7 +26,9 @@ fmt: ## go fmt
 checks: ## run checks/linter
 	GO111MODULE=on golangci-lint run
 
-release: checks build-bellpush build-chime ## build the release archive
+build-all: checks build-bellpush build-chime
+
+release: build-all ## build the release archive
 	tar -czvf pi-bell.tar.gz chime bellpush scripts/pibell-bellpush.service scripts/pibell-chime.service scripts/chime.env
 
 install: build-bellpush build-chime ## install the bellpush and chime

@@ -1,8 +1,13 @@
 package events
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
 
-//ButtonEventType indicates the type of button event
+	"github.com/gobuffalo/uuid"
+)
+
+// ButtonEventType indicates the type of button event
 type ButtonEventType int
 
 const (
@@ -14,7 +19,20 @@ const (
 
 // ButtonEvent represents an event for a button
 type ButtonEvent struct {
-	Type ButtonEventType `json:"type"`
+	ID     uuid.UUID       `json:"id"`
+	Type   ButtonEventType `json:"type"`
+	Source string          `json:"source"`
+}
+
+func TypeToString(eventType ButtonEventType) string {
+	switch eventType {
+	case ButtonPressed:
+		return "pressed"
+	case ButtonReleased:
+		return "released"
+	default:
+		return fmt.Sprintf("%d", eventType)
+	}
 }
 
 // ToJSON converts the event to JSON

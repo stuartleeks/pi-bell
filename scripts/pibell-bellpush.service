@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
+EnvironmentFile=/usr/local/bin/pi-bell/bellpush.env
 ExecStart=/usr/local/bin/pi-bell/bellpush
 WorkingDirectory=/usr/local/bin/pi-bell
 StandardOutput=inherit
