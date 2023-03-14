@@ -25,7 +25,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build in dev container
-        uses: devcontainers/ci@v0.2
+        uses: devcontainers/ci@v0.3
         id: build
         with:
           imageName: ghcr.io/stuartleeks/pi-bell-devcontainer
