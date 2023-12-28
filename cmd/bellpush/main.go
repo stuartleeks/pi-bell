@@ -2,9 +2,12 @@ package main
 
 import (
 	"bufio"
+	"embed"
+	_ "embed"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -123,9 +126,25 @@ func httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Set up homepage for testing
-func httpTestPage(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "./cmd/bellpush/websockets.html")
+// // Set up homepage for testing
+//
+//	func httpTestPage(w http.ResponseWriter, r *http.Request) {
+//		http.ServeFile(w, r, "./cmd/bellpush/websockets.html")
+//	}
+
+//go:embed templates/*
+var f embed.FS
+
+func httpHomePage(w http.ResponseWriter, r *http.Request) {
+	chimes := []string{}
+	for name := range clientOutputChannels {
+		chimes = append(chimes, name)
+	}
+	tmpl := template.Must(template.ParseFS(f, "templates/index.html"))
+	tmpl.Execute(w, map[string]interface{}{
+		"Title":  "Home Page",
+		"Chimes": chimes,
+	})
 }
 func httpPing(w http.ResponseWriter, r *http.Request) {
 	if telemetryClient != nil {
@@ -223,7 +242,7 @@ func main() {
 
 	http.HandleFunc("/doorbell", httpDoorbellNotifications)
 	http.HandleFunc("/ping", httpPing)
-	http.HandleFunc("/", httpTestPage)
+	http.HandleFunc("/", httpHomePage)
 	http.HandleFunc("/button/push", httpButtonPush)
 	http.HandleFunc("/button/release", httpButtonRelease)
 	http.HandleFunc("/button/push-release", httpButtonPushRelease)
