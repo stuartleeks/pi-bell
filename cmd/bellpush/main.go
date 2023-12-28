@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -27,7 +29,9 @@ var upgrader = websocket.Upgrader{
 // TODO - make this configurable
 const buttonPinNumber string = pi.GPIO17
 
-var clientOutputChannels map[chan *events.ButtonEvent]bool
+const messageHello string = "hello"
+
+var clientOutputChannels map[string]chan *events.ButtonEvent // Currently this stores the name keyed on the channel - TODO: switch to store by name!
 var telemetryClient appinsights.TelemetryClient
 
 func uuidGen() uuid.UUID {
@@ -47,22 +51,60 @@ func sendButtonEvent(buttonEvent *events.ButtonEvent) {
 		telemetryClient.Channel().Flush()
 	}
 
-	for channel := range clientOutputChannels {
+	for _, channel := range clientOutputChannels {
 		channel <- buttonEvent
 	}
 }
 
 // Set up web socket endpoint for pushing doorbell notifications
 func httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
+	// Upgrade to websocket connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	defer conn.Close()
 
+	// Read "hello" message from client
+	t, p, err := conn.ReadMessage()
+	if err != nil {
+		log.Printf("Error reading message: %v\n", err)
+		return
+	}
+	if t != websocket.TextMessage {
+		log.Printf("Unexpected message type: %d\n", t)
+		return
+	}
+	log.Printf("Message type: %d; Message payload: %s\n", t, p)
+	var dat map[string]interface{}
+	if err = json.Unmarshal(p, &dat); err != nil {
+		log.Printf("Error unmarshalling message: %v\n", err)
+		return
+	}
+	messageType, ok := dat["messageType"].(string)
+	if !ok {
+		log.Println("No messageType in message")
+	}
+	if messageType != messageHello {
+		log.Printf("Unexpected messageType: %s\n", messageType)
+		return
+	}
+	senderName, ok := dat["senderName"].(string)
+	if !ok {
+		log.Println("No senderName in message")
+		return
+	}
+
+	// Read from message channel and write back to client
 	outputChannel := make(chan *events.ButtonEvent, 50)
-	clientOutputChannels[outputChannel] = true
-
+	// TODO - handle existing client: send ping message to test if still connected?
+	// if _, ok := clientOutputChannels[senderName]; ok {
+	// 	log.Printf("Client already connected with name: %s\n", senderName)
+	// 	return
+	// }
+	log.Printf("Client connected with name: %q\n", senderName)
+	clientOutputChannels[senderName] = outputChannel
 	for {
 		buttonEvent := <-outputChannel
 
@@ -74,7 +116,8 @@ func httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
 
 		// Write message back to client
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
-			delete(clientOutputChannels, outputChannel)
+			log.Printf("Error sending message to sender %q - disconnecting: %s\n", senderName, err)
+			delete(clientOutputChannels, senderName)
 			return
 		}
 	}
@@ -96,6 +139,7 @@ func httpPing(w http.ResponseWriter, r *http.Request) {
 // Set up endpoints to trigger doorbell (e.g. if not running on the RaspberryPi)
 func httpButtonPush(w http.ResponseWriter, r *http.Request) {
 	sendButtonEvent(&events.ButtonEvent{
+		ID:     uuidGen(),
 		Type:   events.ButtonPressed,
 		Source: "web",
 	})
@@ -135,7 +179,7 @@ func main() {
 	telemetryClient.Track(trace)
 	telemetryClient.Channel().Flush()
 
-	clientOutputChannels = make(map[chan *events.ButtonEvent]bool)
+	clientOutputChannels = make(map[string]chan *events.ButtonEvent)
 
 	// Set up Raspberry Pi button handler for bell push
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
@@ -200,8 +244,42 @@ func main() {
 		}
 	}()
 
+	// GPIO events are disabled - set up keyboard input for simulation when testing
+	stdioLoop := true
+	if disableGpioEnv == "true" {
+		go func() {
+			// read from stdin
+			consoleReader := bufio.NewReaderSize(os.Stdin, 1)
+			log.Printf("Starting stdio loop\n")
+			for stdioLoop {
+				input, err := consoleReader.ReadByte()
+				if err != nil {
+					continue
+				}
+				char := string(input)
+				log.Printf("Read char: %s\n", char)
+				switch char {
+				case "b": // bell push
+					sendButtonEvent(&events.ButtonEvent{
+						ID:     uuidGen(),
+						Type:   events.ButtonPressed,
+						Source: "keyboard",
+					})
+				case "r": // bell release
+					sendButtonEvent(&events.ButtonEvent{
+						ID:     uuidGen(),
+						Type:   events.ButtonReleased,
+						Source: "keyboard",
+					})
+				}
+			}
+			log.Printf("Exiting stdio loop\n")
+		}()
+	}
+
 	fmt.Println("Starting server...")
 	err := http.ListenAndServe("0.0.0.0:8080", nil)
+	stdioLoop = false
 	healthTicker.Stop()
 	healthTickerDone <- true
 	if err != nil {

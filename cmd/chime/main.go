@@ -134,6 +134,11 @@ func blinkStatusLed(statusLed *gpio.LedDriver, durationBetweenFlashes time.Durat
 func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.LedDriver, relay *gpio.RelayDriver, connectingStatusBlink CancellableOperation) error {
 
 	defer connectingStatusBlink.Cancel() // ensure we cancel the connecting status blink on error etc
+	hostname, err := os.Hostname()
+	if err != nil {
+		logError("failed to get hostname: %v", err)
+		return fmt.Errorf("failed to get hostname: %v", err)
+	}
 
 	u := url.URL{Scheme: "ws", Host: *address, Path: "/doorbell"}
 	logInformation("connecting to %s", u.String())
@@ -143,12 +148,19 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 		HandshakeTimeout: 10 * time.Second,
 	}
 
-	c, _, err := dialer.Dial(u.String(), nil)
+	conn, _, err := dialer.Dial(u.String(), nil)
 	if err != nil {
 		err = fmt.Errorf("dial to %s failed: %v", u.String(), err)
 		return err
 	}
-	defer c.Close()
+	defer conn.Close()
+
+	// Send hello message with hostname
+	helloMessage := map[string]interface{}{
+		"messageType": "hello",
+		"senderName":  hostname,
+	}
+	conn.WriteJSON(helloMessage)
 
 	// connected to bellpush -> cancel the connecting blink and working blinking
 	connectingStatusBlink.Cancel()
@@ -163,7 +175,7 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 	logInformation("Listening...")
 	go func() {
 		for {
-			messageType, buf, err := c.ReadMessage()
+			messageType, buf, err := conn.ReadMessage()
 			if err != nil {
 				log.Printf("Error reading:  (%T) %v\n", err, err) // TODO - check for websocket.CloseError and return to trigger reconnecting? (Currently panics for repeated read on failed connection in websocket code)
 				var closeError *websocket.CloseError

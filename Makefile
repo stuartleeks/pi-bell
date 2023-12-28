@@ -17,6 +17,10 @@ build-bellpush: ## build the bellpush
 run-chime: ## run the chime (set DOORBELL)
 	go run ./cmd/chime/main.go --addr=${DOORBELL}
 
+run-chime-nogpio: ## run the chime (set DOORBELL)
+	DISABLE_GPIO=true go run ./cmd/chime/main.go --addr=${DOORBELL}
+
+
 build-chime: ## build the chime
 	GOOS=linux GOARCH=arm GOARM=5 go build -o chime ./cmd/chime/main.go
 
