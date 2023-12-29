@@ -18,6 +18,7 @@ import (
 	"github.com/microsoft/ApplicationInsights-Go/appinsights/contracts"
 	"github.com/stuartleeks/pi-bell/internal/pkg/events"
 	"github.com/stuartleeks/pi-bell/internal/pkg/pi"
+	"github.com/stuartleeks/pi-bell/internal/pkg/timeutils"
 	"gobot.io/x/gobot/drivers/gpio"
 	"gobot.io/x/gobot/platforms/raspi"
 )
@@ -26,6 +27,8 @@ var addr = flag.String("addr", "localhost:8080", "http service address")
 
 var telemetryClient appinsights.TelemetryClient
 var disableGpio bool
+var initTime time.Time = timeutils.MustTimeParse(time.RFC3339, "1900-01-01T00:00:00Z")
+var snoozeExpiry = initTime
 
 func _log(level contracts.SeverityLevel, format string, a ...any) {
 	s := fmt.Sprintf(format, a...)
@@ -134,10 +137,14 @@ func blinkStatusLed(statusLed *gpio.LedDriver, durationBetweenFlashes time.Durat
 func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, statusLed *gpio.LedDriver, relay *gpio.RelayDriver, connectingStatusBlink CancellableOperation) error {
 
 	defer connectingStatusBlink.Cancel() // ensure we cancel the connecting status blink on error etc
-	hostname, err := os.Hostname()
-	if err != nil {
-		logError("failed to get hostname: %v", err)
-		return fmt.Errorf("failed to get hostname: %v", err)
+	chimeName := os.Getenv("CHIME_NAME")
+	if chimeName == "" {
+		hostname, err := os.Hostname()
+		if err != nil {
+			logError("failed to get hostname: %v", err)
+			return fmt.Errorf("failed to get hostname: %v", err)
+		}
+		chimeName = hostname
 	}
 
 	u := url.URL{Scheme: "ws", Host: *address, Path: "/doorbell"}
@@ -158,9 +165,13 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 	// Send hello message with hostname
 	helloMessage := map[string]interface{}{
 		"messageType": "hello",
-		"senderName":  hostname,
+		"senderName":  chimeName,
 	}
-	conn.WriteJSON(helloMessage)
+	err = conn.WriteJSON(helloMessage)
+	if err != nil {
+		err = fmt.Errorf("failed to send hello message: %v", err)
+		return err
+	}
 
 	// connected to bellpush -> cancel the connecting blink and working blinking
 	connectingStatusBlink.Cancel()
@@ -189,37 +200,24 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 				continue
 			}
 			logInformation("Received: %v: %s\n", messageType, string(buf))
-			buttonEvent, err := events.ParseButtonEventJSON(buf)
+			event, err := events.ParseEventJSON(buf)
 			if err != nil {
-				logError("Error parsing: (%T) %v\n", err, err)
+				logError("Error parsing event: (%T) %v\n", err, err)
 				continue
 			}
 
-			event := appinsights.NewEventTelemetry("button-event")
-			event.Properties["id"] = fmt.Sprintf("%v", buttonEvent.ID)
-			event.Properties["type"] = events.TypeToString(buttonEvent.Type)
-			event.Properties["source"] = buttonEvent.Source
-			telemetryClient.Track(event)
-			telemetryClient.Channel().Flush()
-
-			if relay != nil {
-				switch buttonEvent.Type {
-				// NOTE - logic is inverted - see notes in setup
-				case events.ButtonPressed:
-					logInformation("Turning relay on")
-					if err := relay.On(); err != nil {
-						resultChan <- err
-						return
-					}
-				case events.ButtonReleased:
-					logInformation("Turning relay off")
-					if err := relay.Off(); err != nil {
-						resultChan <- err
-						return
-					}
-				default:
-					logError("Unhandled ButtonEventType: %v \n", buttonEvent.Type)
-				}
+			shouldReturn := false
+			switch event.EventType {
+			case events.EventTypeButton:
+				logInformation("Handling button event")
+				shouldReturn = handleButtonEvent(buf, relay, resultChan)
+			case events.EventTypeSnooze:
+				shouldReturn = handleSnoozeEvent(buf)
+			default:
+				logError("Unhandled event type: %v\n", event.EventType)
+			}
+			if shouldReturn {
+				return
 			}
 		}
 	}()
@@ -232,6 +230,71 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 		logError("Returning from connectAndHandleEvents - error (%T): %s\n", err, err)
 		return err
 	}
+}
+
+func handleSnoozeEvent(buf []byte) bool {
+	snoozeEvent, err := events.ParseSnoozeEventJSON(buf)
+	if err != nil {
+		logError("Error parsing: (%T) %v\n", err, err)
+		return false
+	}
+
+	eventTelemetry := appinsights.NewEventTelemetry("snooze-event")
+	eventTelemetry.Properties["id"] = fmt.Sprintf("%v", snoozeEvent.ID)
+	eventTelemetry.Properties["snoozeExpiry"] = snoozeEvent.SnoozeExpiry.Format(time.RFC3339)
+	telemetryClient.Track(eventTelemetry)
+	telemetryClient.Channel().Flush()
+
+	logInformation("Setting snooze until %s", snoozeEvent.SnoozeExpiry.Format(time.RFC3339))
+	snoozeExpiry = snoozeEvent.SnoozeExpiry
+
+	return false
+}
+func handleButtonEvent(buf []byte, relay *gpio.RelayDriver, resultChan chan error) bool {
+	buttonEvent, err := events.ParseButtonEventJSON(buf)
+	if err != nil {
+		logError("Error parsing: (%T) %v\n", err, err)
+		return false
+	}
+
+	eventTelemetry := appinsights.NewEventTelemetry("button-event")
+	eventTelemetry.Properties["id"] = fmt.Sprintf("%v", buttonEvent.ID)
+	eventTelemetry.Properties["type"] = events.TypeToString(buttonEvent.ButtonEventType)
+	eventTelemetry.Properties["source"] = buttonEvent.Source
+	telemetryClient.Track(eventTelemetry)
+	telemetryClient.Channel().Flush()
+
+	switch buttonEvent.ButtonEventType {
+	// NOTE - logic is inverted - see notes in setup
+	case events.ButtonPressed:
+		if snoozeExpiry.After(time.Now()) {
+			logInformation("Snoozed - not turning relay on. Snooze expires at %s", snoozeExpiry.Format(time.RFC3339))
+			return false
+		}
+		if relay == nil {
+			logInformation("Relay not connected - not turning on")
+			return false
+		}
+		logInformation("Turning relay on")
+		if err := relay.On(); err != nil {
+			resultChan <- err
+			return true
+		}
+	case events.ButtonReleased:
+		if relay == nil {
+			logInformation("Relay not connected - not turning off")
+			return false
+		}
+		logInformation("Turning relay off")
+		if err := relay.Off(); err != nil {
+			resultChan <- err
+			return true
+		}
+	default:
+		logError("Unhandled ButtonEventType: %v \n", buttonEvent.ButtonEventType)
+	}
+
+	return false
 }
 
 func main() {
@@ -247,10 +310,10 @@ func main() {
 
 	logInformation("chime starting")
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
-	disableGpio = strings.ToLower(disableGpioEnv) != "true"
+	disableGpio = strings.ToLower(disableGpioEnv) == "true"
 	var led *gpio.LedDriver
 	var relay *gpio.RelayDriver
-	if disableGpio {
+	if !disableGpio {
 		logInformation("Connecting to raspberry pi ...")
 		raspberryPi := raspi.NewAdaptor()
 		defer raspberryPi.Finalize() // nolint:errcheck

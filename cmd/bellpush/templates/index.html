@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,24 +9,69 @@
 		body {
 			font-family: Arial;
 		}
+
 		h1 {
 			text-decoration: underline;
 		}
+		td {
+			padding-right: 0.5em;
+		}
+		th {
+			text-align: left;
+		}
 	</style>
+	<script>
+		function snooze(chime, duration) {
+			console.log("Snoozing " + chime + " for " + duration + " minutes");
+			fetch(`/chime/snooze?name=${chime}&duration=${duration}m`, {
+				method: "POST"
+			}).then(response => {
+				if (response.ok) {
+					console.log("Snooze request sent");
+					window.location.reload();
+				} else {
+					console.log("Snooze request failed");
+					alert("Snooze request failed: " + response.status + " " + response.statusText);
+				}
+			});
+		}
+		function unsnooze(chime) {
+			console.log("UNSnoozing " + chime);
+		}
+	</script>
 </head>
+
 <body>
 	<h1>{{ .Title }}</h1>
 
 	<h2>Connected Chimes:</h2>
 	{{if .Chimes}}
-		<ul>
-			{{ range .Chimes }}
-				<li>{{ . }}</li>
-			{{ end }}
-		</ul>
+	<table>
+		<tr>
+			<th>Name</th>
+			<th>Snooze</th>
+		</tr>
+		{{ range .Chimes }}
+		<tr>
+			<td>{{ .Name }}</td>
+			<td>
+				{{ if .SnoozeExpiry }}
+				Snoozing until {{ .SnoozeExpiry }} <button onclick="unsnooze({{ .Name }})">Cancel snooze</button>
+				{{ else }}
+				<button onclick="snooze({{ .Name }}, 30)">30m</button>
+				<button onclick="snooze({{ .Name }}, 60)">1h</button>
+				<button onclick="snooze({{ .Name }}, 90)">1h30</button>
+				<button onclick="snooze({{ .Name }}, 120)">2h</button>
+				{{ end }}
+			</td>
+		</tr>
+		{{ end }}
+	</table>
+	</ul>
 	{{else}}
-		<p>No chimes connected</p>
-	{{end}}	
+	<p>No chimes connected</p>
+	{{end}}
 
 </body>
+
 </html>

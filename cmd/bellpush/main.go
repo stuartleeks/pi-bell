@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofrs/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/stuartleeks/pi-bell/internal/pkg/events"
 	"github.com/stuartleeks/pi-bell/internal/pkg/pi"
+	"github.com/stuartleeks/pi-bell/internal/pkg/timeutils"
 	"gobot.io/x/gobot/drivers/gpio"
 	"gobot.io/x/gobot/platforms/raspi"
 
@@ -34,29 +34,61 @@ const buttonPinNumber string = pi.GPIO17
 
 const messageHello string = "hello"
 
-var clientOutputChannels map[string]chan *events.ButtonEvent // Currently this stores the name keyed on the channel - TODO: switch to store by name!
+var initTime time.Time = timeutils.MustTimeParse(time.RFC3339, "1900-01-01T00:00:00Z")
+
+type chimeInfo struct {
+	events    chan events.Event
+	snoozeEnd time.Time
+}
+
+var chimes map[string]chimeInfo
 var telemetryClient appinsights.TelemetryClient
 
-func uuidGen() uuid.UUID {
-	id, _ := uuid.NewV4()
-	return id
-}
-func sendButtonEvent(buttonEvent *events.ButtonEvent) {
-	jsonValue, err := buttonEvent.ToJSON()
-	log.Printf("ButtonEvent: %s (err: %s)\n", jsonValue, err)
+func broadcastEvent(event events.Event) error {
+	jsonValue, err := event.ToJSON()
+	log.Printf("Event: %s (err: %s)\n", jsonValue, err)
+	if err != nil {
+		return err
+	}
 
 	if telemetryClient != nil {
-		event := appinsights.NewEventTelemetry("button-event")
-		event.Properties["id"] = fmt.Sprintf("%v", buttonEvent.ID)
-		event.Properties["type"] = events.TypeToString(buttonEvent.Type)
-		event.Properties["source"] = buttonEvent.Source
-		telemetryClient.Track(event)
+		eventTelemetry := appinsights.NewEventTelemetry(event.GetType())
+		for name, value := range event.GetProperties() {
+			eventTelemetry.Properties[name] = value
+		}
+		telemetryClient.Track(eventTelemetry)
 		telemetryClient.Channel().Flush()
 	}
 
-	for _, channel := range clientOutputChannels {
-		channel <- buttonEvent
+	for _, client := range chimes {
+		client.events <- event
 	}
+	return nil
+}
+func sendEvent(chimeName string, event events.Event) error {
+	jsonValue, err := event.ToJSON()
+	log.Printf("Event: %s (err: %s)\n", jsonValue, err)
+	if err != nil {
+		return err
+	}
+	chime, ok := chimes[chimeName]
+	if !ok {
+		log.Printf("Unknown chime: %q\n", chimeName)
+		return fmt.Errorf("Unknown chime: %q", chimeName)
+	}
+
+	if telemetryClient != nil {
+		eventTelemetry := appinsights.NewEventTelemetry(event.GetType())
+		for name, value := range event.GetProperties() {
+			eventTelemetry.Properties[name] = value
+		}
+		eventTelemetry.Properties["chimeName"] = chimeName
+		telemetryClient.Track(eventTelemetry)
+		telemetryClient.Channel().Flush()
+	}
+
+	chime.events <- event
+	return nil
 }
 
 // Set up web socket endpoint for pushing doorbell notifications
@@ -100,14 +132,17 @@ func httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Read from message channel and write back to client
-	outputChannel := make(chan *events.ButtonEvent, 50)
+	outputChannel := make(chan events.Event, 50)
 	// TODO - handle existing client: send ping message to test if still connected?
 	// if _, ok := clientOutputChannels[senderName]; ok {
 	// 	log.Printf("Client already connected with name: %s\n", senderName)
 	// 	return
 	// }
 	log.Printf("Client connected with name: %q\n", senderName)
-	clientOutputChannels[senderName] = outputChannel
+	chimes[senderName] = chimeInfo{
+		events:    outputChannel,
+		snoozeEnd: initTime,
+	}
 	for {
 		buttonEvent := <-outputChannel
 
@@ -120,7 +155,7 @@ func httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
 		// Write message back to client
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
 			log.Printf("Error sending message to sender %q - disconnecting: %s\n", senderName, err)
-			delete(clientOutputChannels, senderName)
+			delete(chimes, senderName)
 			return
 		}
 	}
@@ -134,19 +169,80 @@ func httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
 
 //go:embed templates/*
 var f embed.FS
+var templates = template.Must(template.ParseFS(f, "templates/*"))
 
-func httpHomePage(w http.ResponseWriter, r *http.Request) {
-	chimes := []string{}
-	for name := range clientOutputChannels {
-		chimes = append(chimes, name)
+func httpHomePage(w http.ResponseWriter, _ *http.Request) {
+	type chimeModel struct {
+		Name         string
+		SnoozeExpiry string
 	}
-	tmpl := template.Must(template.ParseFS(f, "templates/index.html"))
-	tmpl.Execute(w, map[string]interface{}{
+	chimeInfos := []chimeModel{}
+	for name, chime := range chimes {
+		snoozeExpiry := ""
+		if chime.snoozeEnd.After(time.Now()) {
+			snoozeExpiry = chime.snoozeEnd.Format(time.RFC3339)
+		}
+		c := chimeModel{
+			Name:         name,
+			SnoozeExpiry: snoozeExpiry,
+		}
+		chimeInfos = append(chimeInfos, c)
+	}
+	if err := templates.ExecuteTemplate(w, "index.html", map[string]interface{}{
 		"Title":  "Home Page",
-		"Chimes": chimes,
-	})
+		"Chimes": chimeInfos,
+	}); err != nil {
+		log.Printf("Error executing template: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
-func httpPing(w http.ResponseWriter, r *http.Request) {
+func httpSnooze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		log.Printf("Invalid method: %s\n", r.Method)
+		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get(("name"))
+	if name == "" {
+		log.Printf("Missing name\n")
+		http.Error(w, "Missing name", http.StatusBadRequest)
+		return
+	}
+	durationString := r.URL.Query().Get(("duration"))
+	if durationString == "" {
+		log.Printf("Missing duration\n")
+		http.Error(w, "Missing duration", http.StatusBadRequest)
+		return
+	}
+	duration, err := time.ParseDuration(durationString)
+	if err != nil {
+		log.Printf("Invalid duration: %v\n", err)
+		http.Error(w, fmt.Sprintf("Invalid duration: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("Snoozing chime %q for %f minutes\n", name, duration.Minutes())
+
+	chime, ok := chimes[name]
+	if !ok {
+		log.Printf("Unknown chime: %q\n", name)
+		http.Error(w, fmt.Sprintf("Unknown chime: %q", name), http.StatusBadRequest)
+		return
+	}
+
+	chime.snoozeEnd = time.Now().Add(duration)
+	chimes[name] = chime
+
+	err = sendEvent(name, events.NewSnoozeEvent(chime.snoozeEnd))
+	if err != nil {
+		log.Printf("Error sending snooze event: %v\n", err)
+		http.Error(w, fmt.Sprintf("Error sending snooze event: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+func httpPing(w http.ResponseWriter, _ *http.Request) {
 	if telemetryClient != nil {
 		telemetryClient.TrackEvent("ping")
 		telemetryClient.Channel().Flush()
@@ -156,32 +252,34 @@ func httpPing(w http.ResponseWriter, r *http.Request) {
 }
 
 // Set up endpoints to trigger doorbell (e.g. if not running on the RaspberryPi)
-func httpButtonPush(w http.ResponseWriter, r *http.Request) {
-	sendButtonEvent(&events.ButtonEvent{
-		ID:     uuidGen(),
-		Type:   events.ButtonPressed,
-		Source: "web",
-	})
+func httpButtonPush(w http.ResponseWriter, _ *http.Request) {
+	err := broadcastEvent(events.NewButtonEvent(events.ButtonPressed, "web"))
+	if err != nil {
+		log.Printf("Error broadcasting button pressed event: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
-func httpButtonRelease(w http.ResponseWriter, r *http.Request) {
-	sendButtonEvent(&events.ButtonEvent{
-		ID:     uuidGen(),
-		Type:   events.ButtonReleased,
-		Source: "web",
-	})
+func httpButtonRelease(w http.ResponseWriter, _ *http.Request) {
+	err := broadcastEvent(events.NewButtonEvent(events.ButtonReleased, "web"))
+	if err != nil {
+		log.Printf("Error broadcasting button released event: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
-func httpButtonPushRelease(w http.ResponseWriter, r *http.Request) {
-	sendButtonEvent(&events.ButtonEvent{
-		ID:     uuidGen(),
-		Type:   events.ButtonPressed,
-		Source: "web",
-	})
+func httpButtonPushRelease(w http.ResponseWriter, _ *http.Request) {
+	err := broadcastEvent(events.NewButtonEvent(events.ButtonPressed, "web"))
+	if err != nil {
+		log.Printf("Error broadcasting button pressed event: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+
 	time.Sleep(1 * time.Second)
-	sendButtonEvent(&events.ButtonEvent{
-		ID:     uuidGen(),
-		Type:   events.ButtonReleased,
-		Source: "web",
-	})
+
+	err = broadcastEvent(events.NewButtonEvent(events.ButtonReleased, "web"))
+	if err != nil {
+		log.Printf("Error broadcasting button released event: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func main() {
@@ -198,7 +296,7 @@ func main() {
 	telemetryClient.Track(trace)
 	telemetryClient.Channel().Flush()
 
-	clientOutputChannels = make(map[string]chan *events.ButtonEvent)
+	chimes = make(map[string]chimeInfo)
 
 	// Set up Raspberry Pi button handler for bell push
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
@@ -208,11 +306,12 @@ func main() {
 
 		button := gpio.NewButtonDriver(raspberryPi, buttonPinNumber)
 		err := button.On(gpio.ButtonPush, func(s interface{}) {
-			sendButtonEvent(&events.ButtonEvent{
-				ID:     uuidGen(),
-				Type:   events.ButtonPressed,
-				Source: "bellpush",
-			})
+			err := broadcastEvent(events.NewButtonEvent(events.ButtonPressed, "bellpush"))
+			if err != nil {
+				log.Printf("Error broadcasting button pressed event: %v\n", err)
+				telemetryClient.TrackException(err)
+				telemetryClient.Channel().Flush()
+			}
 		})
 		if err != nil {
 			telemetryClient.TrackException(err)
@@ -220,11 +319,12 @@ func main() {
 			panic(err)
 		}
 		err = button.On(gpio.ButtonRelease, func(s interface{}) {
-			sendButtonEvent(&events.ButtonEvent{
-				ID:     uuidGen(),
-				Type:   events.ButtonReleased,
-				Source: "bellpush",
-			})
+			err2 := broadcastEvent(events.NewButtonEvent(events.ButtonReleased, "bellpush"))
+			if err2 != nil {
+				log.Printf("Error broadcasting button released event: %v\n", err)
+				telemetryClient.TrackException(err)
+				telemetryClient.Channel().Flush()
+			}
 		})
 		if err != nil {
 			telemetryClient.TrackException(err)
@@ -243,6 +343,7 @@ func main() {
 	http.HandleFunc("/doorbell", httpDoorbellNotifications)
 	http.HandleFunc("/ping", httpPing)
 	http.HandleFunc("/", httpHomePage)
+	http.HandleFunc("/chime/snooze", httpSnooze)
 	http.HandleFunc("/button/push", httpButtonPush)
 	http.HandleFunc("/button/release", httpButtonRelease)
 	http.HandleFunc("/button/push-release", httpButtonPushRelease)
@@ -279,17 +380,15 @@ func main() {
 				log.Printf("Read char: %s\n", char)
 				switch char {
 				case "b": // bell push
-					sendButtonEvent(&events.ButtonEvent{
-						ID:     uuidGen(),
-						Type:   events.ButtonPressed,
-						Source: "keyboard",
-					})
+					err := broadcastEvent(events.NewButtonEvent(events.ButtonPressed, "keyboard"))
+					if err != nil {
+						log.Printf("Error broadcasting button pressed event: %v\n", err)
+					}
 				case "r": // bell release
-					sendButtonEvent(&events.ButtonEvent{
-						ID:     uuidGen(),
-						Type:   events.ButtonReleased,
-						Source: "keyboard",
-					})
+					err := broadcastEvent(events.NewButtonEvent(events.ButtonReleased, "keyboard"))
+					if err != nil {
+						log.Printf("Error broadcasting button released event: %v\n", err)
+					}
 				}
 			}
 			log.Printf("Exiting stdio loop\n")
