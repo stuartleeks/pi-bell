@@ -13,9 +13,11 @@
 		h1 {
 			text-decoration: underline;
 		}
+
 		td {
 			padding-right: 0.5em;
 		}
+
 		th {
 			text-align: left;
 		}
@@ -49,11 +51,28 @@
 				}
 			});
 		}
+		function ringBell() {
+			console.log("Ringing bell");
+			fetch("/button/push-release", {
+				method: "POST"
+			}).then(response => {
+				if (response.ok) {
+					console.log("Ring request sent");
+				} else {
+					console.log("Ring request failed");
+					alert("Ring request failed: " + response.status + " " + response.statusText);
+				}
+			});
+		}
 	</script>
 </head>
 
 <body>
 	<h1>{{ .Title }}</h1>
+	<h2>Bell</h2>
+	<div>
+		<button onclick="ringBell()">Ring bell</button>
+	</div>
 
 	<h2>Connected Chimes:</h2>
 	{{if .Chimes}}
