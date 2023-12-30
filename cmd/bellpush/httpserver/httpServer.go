@@ -186,11 +186,11 @@ func (b *BellPushHTTPServer) httpButtonPushRelease(w http.ResponseWriter, _ *htt
 	}
 }
 
-var connectCounter int32 = 0
+var connectCounter int32
 
 // Set up web socket endpoint for pushing doorbell notifications
 func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
-	connectId := atomic.AddInt32(&connectCounter, 1)
+	connectID := atomic.AddInt32(&connectCounter, 1)
 	// Upgrade to websocket connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -202,30 +202,30 @@ func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r 
 	// Read "hello" message from client
 	t, p, err := conn.ReadMessage()
 	if err != nil {
-		log.Printf("%d:Error reading message: %v\n", connectId, err)
+		log.Printf("%d:Error reading message: %v\n", connectID, err)
 		return
 	}
 	if t != websocket.TextMessage {
-		log.Printf("%d:Unexpected message type: %d\n", connectId, t)
+		log.Printf("%d:Unexpected message type: %d\n", connectID, t)
 		return
 	}
-	log.Printf("%d:Message type: %d; Message payload: %s\n", connectId, t, p)
+	log.Printf("%d:Message type: %d; Message payload: %s\n", connectID, t, p)
 	var dat map[string]interface{}
 	if err = json.Unmarshal(p, &dat); err != nil {
-		log.Printf("%d:Error unmarshalling message: %v\n", connectId, err)
+		log.Printf("%d:Error unmarshalling message: %v\n", connectID, err)
 		return
 	}
 	messageType, ok := dat["messageType"].(string)
 	if !ok {
-		log.Printf("%d:No messageType in message\n", connectId)
+		log.Printf("%d:No messageType in message\n", connectID)
 	}
 	if messageType != messageHello {
-		log.Printf("%d:Unexpected messageType: %s\n", connectId, messageType)
+		log.Printf("%d:Unexpected messageType: %s\n", connectID, messageType)
 		return
 	}
 	senderName, ok := dat["senderName"].(string)
 	if !ok {
-		log.Printf("%d:No senderName in message\n", connectId)
+		log.Printf("%d:No senderName in message\n", connectID)
 		return
 	}
 
@@ -243,7 +243,7 @@ func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r 
 		chime.Events <- events.NewStopProcessingEvent()
 		chime.Events = outputChannel // replace with new channel for new loop
 		sendSnoozeEvent = chime.SnoozeEnd.After(time.Now())
-		log.Printf("%d:Existing client with name %q. SnoozeEnd: %s, sendSnoozeEvent: %v\n", connectId, senderName, chime.SnoozeEnd.Format(time.RFC3339), sendSnoozeEvent)
+		log.Printf("%d:Existing client with name %q. SnoozeEnd: %s, sendSnoozeEvent: %v\n", connectID, senderName, chime.SnoozeEnd.Format(time.RFC3339), sendSnoozeEvent)
 	} else {
 		chime = bellpush.ChimeInfo{
 			Events:    outputChannel,
@@ -251,31 +251,35 @@ func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r 
 		}
 	}
 
-	log.Printf("%d:Client connected with name: %q\n", connectId, senderName)
+	log.Printf("%d:Client connected with name: %q\n", connectID, senderName)
 	b.BellPush.SetChime(senderName, chime)
 
 	if sendSnoozeEvent {
-		b.BellPush.SendEvent(senderName, events.NewSnoozeEvent(chime.SnoozeEnd))
+		err = b.BellPush.SendEvent(senderName, events.NewSnoozeEvent(chime.SnoozeEnd))
+		if err != nil {
+			log.Printf("%d:Error sending snooze event: %v\n", connectID, err)
+			return
+		}
 	}
 
 	// set up send loop for client
 	for {
 		event := <-outputChannel
 		if event.GetType() == events.EventTypeStopProcessing {
-			log.Printf("%d:Received StopProcessingEvent - exiting\n", connectId)
+			log.Printf("%d:Received StopProcessingEvent - exiting\n", connectID)
 			break
 		}
 
 		message, err := event.ToJSON()
 		if err != nil {
-			log.Printf("%d:Error converting button event to JSON: %v\n", connectId, err)
+			log.Printf("%d:Error converting button event to JSON: %v\n", connectID, err)
 			continue
 		}
-		log.Printf("*** %d:Sending message (%q): %s\n", connectId, senderName, message)
+		log.Printf("*** %d:Sending message (%q): %s\n", connectID, senderName, message)
 
 		// Write message back to client
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
-			log.Printf("%d:***Error sending message to sender %q - disconnecting: %s\n", connectId, senderName, err)
+			log.Printf("%d:***Error sending message to sender %q - disconnecting: %s\n", connectID, senderName, err)
 			b.BellPush.RemoveChime(senderName)
 			return
 		}

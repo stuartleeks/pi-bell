@@ -166,7 +166,9 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 	logInformation("Listening...")
 	go func() {
 		for {
-			messageType, buf, err := conn.ReadMessage()
+			var messageType int
+			var buf []byte
+			messageType, buf, err = conn.ReadMessage()
 			if err != nil {
 				// TODO - check for websocket.CloseError and return to trigger reconnecting?
 				//        (Currently panics for repeated read on failed connection in websocket code)
@@ -182,7 +184,9 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 				continue
 			}
 			logInformation("Received: %v: %s\n", messageType, string(buf))
-			event, err := events.ParseEventJSON(buf)
+
+			var event *events.EventCommon
+			event, err = events.ParseEventJSON(buf)
 			if err != nil {
 				logError("Error parsing event: (%T) %v\n", err, err)
 				continue
@@ -267,7 +271,7 @@ func handleUnSnoozeEvent(buf []byte) bool {
 	telemetryClient.Track(eventTelemetry)
 	telemetryClient.Channel().Flush()
 
-	logInformation("Cancelling snooze")
+	logInformation("Canceling snooze")
 	snoozeExpiry = initTime
 
 	return false
