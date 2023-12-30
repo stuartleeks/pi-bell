@@ -36,7 +36,18 @@
 			});
 		}
 		function unsnooze(chime) {
-			console.log("UNSnoozing " + chime);
+			console.log("UnSnoozing " + chime);
+			fetch(`/chime/unsnooze?name=${chime}`, {
+				method: "POST"
+			}).then(response => {
+				if (response.ok) {
+					console.log("UnSnooze request sent");
+					window.location.reload();
+				} else {
+					console.log("UnSnooze request failed");
+					alert("UnSnooze request failed: " + response.status + " " + response.statusText);
+				}
+			});
 		}
 	</script>
 </head>

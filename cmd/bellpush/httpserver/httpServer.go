@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -111,6 +112,39 @@ func (b *BellPushHTTPServer) httpSnooze(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 }
+func (b *BellPushHTTPServer) httpUnSnooze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		log.Printf("Invalid method: %s\n", r.Method)
+		http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
+		return
+	}
+
+	name := r.URL.Query().Get(("name"))
+	if name == "" {
+		log.Printf("Missing name\n")
+		http.Error(w, "Missing name", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("UnSnoozing chime %q\n", name)
+
+	chime, ok := b.BellPush.GetChime(name)
+	if !ok {
+		log.Printf("Unknown chime: %q\n", name)
+		http.Error(w, fmt.Sprintf("Unknown chime: %q", name), http.StatusBadRequest)
+		return
+	}
+
+	chime.SnoozeEnd = initTime
+	b.BellPush.SetChime(name, chime)
+
+	err := b.BellPush.SendEvent(name, events.NewUnSnoozeEvent())
+	if err != nil {
+		log.Printf("Error sending unsnooze event: %v\n", err)
+		http.Error(w, fmt.Sprintf("Error sending unsnooze event: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
 
 func (b *BellPushHTTPServer) httpPing(w http.ResponseWriter, _ *http.Request) {
 	if b.telemetryClient != nil {
@@ -152,8 +186,11 @@ func (b *BellPushHTTPServer) httpButtonPushRelease(w http.ResponseWriter, _ *htt
 	}
 }
 
+var connectCounter int32 = 0
+
 // Set up web socket endpoint for pushing doorbell notifications
 func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r *http.Request) {
+	connectId := atomic.AddInt32(&connectCounter, 1)
 	// Upgrade to websocket connection
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -165,30 +202,30 @@ func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r 
 	// Read "hello" message from client
 	t, p, err := conn.ReadMessage()
 	if err != nil {
-		log.Printf("Error reading message: %v\n", err)
+		log.Printf("%d:Error reading message: %v\n", connectId, err)
 		return
 	}
 	if t != websocket.TextMessage {
-		log.Printf("Unexpected message type: %d\n", t)
+		log.Printf("%d:Unexpected message type: %d\n", connectId, t)
 		return
 	}
-	log.Printf("Message type: %d; Message payload: %s\n", t, p)
+	log.Printf("%d:Message type: %d; Message payload: %s\n", connectId, t, p)
 	var dat map[string]interface{}
 	if err = json.Unmarshal(p, &dat); err != nil {
-		log.Printf("Error unmarshalling message: %v\n", err)
+		log.Printf("%d:Error unmarshalling message: %v\n", connectId, err)
 		return
 	}
 	messageType, ok := dat["messageType"].(string)
 	if !ok {
-		log.Println("No messageType in message")
+		log.Printf("%d:No messageType in message\n", connectId)
 	}
 	if messageType != messageHello {
-		log.Printf("Unexpected messageType: %s\n", messageType)
+		log.Printf("%d:Unexpected messageType: %s\n", connectId, messageType)
 		return
 	}
 	senderName, ok := dat["senderName"].(string)
 	if !ok {
-		log.Println("No senderName in message")
+		log.Printf("%d:No senderName in message\n", connectId)
 		return
 	}
 
@@ -199,23 +236,46 @@ func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r 
 	// 	log.Printf("Client already connected with name: %s\n", senderName)
 	// 	return
 	// }
-	log.Printf("Client connected with name: %q\n", senderName)
-	b.BellPush.SetChime(senderName, bellpush.ChimeInfo{
-		Events:    outputChannel,
-		SnoozeEnd: initTime,
-	})
-	for {
-		buttonEvent := <-outputChannel
+	var chime bellpush.ChimeInfo
+	sendSnoozeEvent := false
+	if chime, ok = b.BellPush.GetChime(senderName); ok {
+		// Send stop processing event to existing client loop (before replacing with new loop)
+		chime.Events <- events.NewStopProcessingEvent()
+		chime.Events = outputChannel // replace with new channel for new loop
+		sendSnoozeEvent = chime.SnoozeEnd.After(time.Now())
+		log.Printf("%d:Existing client with name %q. SnoozeEnd: %s, sendSnoozeEvent: %v\n", connectId, senderName, chime.SnoozeEnd.Format(time.RFC3339), sendSnoozeEvent)
+	} else {
+		chime = bellpush.ChimeInfo{
+			Events:    outputChannel,
+			SnoozeEnd: initTime,
+		}
+	}
 
-		message, err := buttonEvent.ToJSON()
+	log.Printf("%d:Client connected with name: %q\n", connectId, senderName)
+	b.BellPush.SetChime(senderName, chime)
+
+	if sendSnoozeEvent {
+		b.BellPush.SendEvent(senderName, events.NewSnoozeEvent(chime.SnoozeEnd))
+	}
+
+	// set up send loop for client
+	for {
+		event := <-outputChannel
+		if event.GetType() == events.EventTypeStopProcessing {
+			log.Printf("%d:Received StopProcessingEvent - exiting\n", connectId)
+			break
+		}
+
+		message, err := event.ToJSON()
 		if err != nil {
-			log.Printf("Error converting button event to JSON: %v\n", err)
+			log.Printf("%d:Error converting button event to JSON: %v\n", connectId, err)
 			continue
 		}
+		log.Printf("*** %d:Sending message (%q): %s\n", connectId, senderName, message)
 
 		// Write message back to client
 		if err := conn.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
-			log.Printf("Error sending message to sender %q - disconnecting: %s\n", senderName, err)
+			log.Printf("%d:***Error sending message to sender %q - disconnecting: %s\n", connectId, senderName, err)
 			b.BellPush.RemoveChime(senderName)
 			return
 		}
@@ -227,6 +287,7 @@ func (b *BellPushHTTPServer) ListenAndServe(addr string) error {
 	http.HandleFunc("/ping", b.httpPing)
 	http.HandleFunc("/", b.httpHomePage)
 	http.HandleFunc("/chime/snooze", b.httpSnooze)
+	http.HandleFunc("/chime/unsnooze", b.httpUnSnooze)
 	http.HandleFunc("/button/push", b.httpButtonPush)
 	http.HandleFunc("/button/release", b.httpButtonRelease)
 	http.HandleFunc("/button/push-release", b.httpButtonPushRelease)

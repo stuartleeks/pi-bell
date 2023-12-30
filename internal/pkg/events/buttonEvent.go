@@ -3,35 +3,9 @@ package events
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/gobuffalo/uuid"
 )
-
-const (
-	EventTypeButton = "button-event"
-	EventTypeSnooze = "snooze-event"
-)
-
-type EventCommon struct {
-	EventType string `json:"eventType"`
-}
-type Event interface {
-	GetType() string
-	GetProperties() map[string]string
-	ToJSON() (string, error)
-}
-
-// ParseEventJSON parses the JSON representation of a Event
-func ParseEventJSON(jsonValue []byte) (*EventCommon, error) {
-
-	var event EventCommon
-	err := json.Unmarshal(jsonValue, &event)
-	if err != nil {
-		return nil, err
-	}
-	return &event, nil
-}
 
 // ButtonEventType indicates the type of button event
 type ButtonEventType int
@@ -101,52 +75,5 @@ func (e ButtonEvent) GetProperties() map[string]string {
 		"id":              e.ID.String(),
 		"buttonEventType": TypeToString(e.ButtonEventType),
 		"source":          e.Source,
-	}
-}
-
-// SnoozeEventType indicates the type of snooze event
-type SnoozeEvent struct {
-	EventCommon
-	ID           uuid.UUID `json:"id"`
-	SnoozeExpiry time.Time `json:"snoozeExpiry"`
-}
-
-var _ Event = SnoozeEvent{}
-
-func NewSnoozeEvent(snoozeExpiry time.Time) *SnoozeEvent {
-	return &SnoozeEvent{
-		EventCommon: EventCommon{
-			EventType: EventTypeSnooze,
-		},
-		ID:           uuid.Must(uuid.NewV4()),
-		SnoozeExpiry: snoozeExpiry,
-	}
-}
-
-// ToJSON converts the event to JSON
-func (e SnoozeEvent) ToJSON() (string, error) {
-	jsonValue, err := json.Marshal(e)
-	return string(jsonValue), err
-}
-
-func (e SnoozeEvent) GetType() string {
-	return e.EventType
-}
-
-// ParseSnoozeEventJSON parses the JSON representation of a SnoozeEvent
-func ParseSnoozeEventJSON(jsonValue []byte) (*SnoozeEvent, error) {
-	var snoozeEvent SnoozeEvent
-	err := json.Unmarshal(jsonValue, &snoozeEvent)
-	if err != nil {
-		return nil, err
-	}
-	return &snoozeEvent, nil
-}
-
-func (e SnoozeEvent) GetProperties() map[string]string {
-	return map[string]string{
-		"type":         e.EventType,
-		"id":           e.ID.String(),
-		"snoozeExpiry": e.SnoozeExpiry.String(),
 	}
 }

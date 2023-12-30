@@ -162,33 +162,15 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 	}
 	defer conn.Close()
 
-	// Send hello message with hostname
-	helloMessage := map[string]interface{}{
-		"messageType": "hello",
-		"senderName":  chimeName,
-	}
-	err = conn.WriteJSON(helloMessage)
-	if err != nil {
-		err = fmt.Errorf("failed to send hello message: %v", err)
-		return err
-	}
-
-	// connected to bellpush -> cancel the connecting blink and working blinking
-	connectingStatusBlink.Cancel()
-	runningStatusBlink, err := blinkStatusLed(statusLed, 10*time.Second)
-	if err != nil {
-		err = fmt.Errorf("failed to set status led blinking: %v", err)
-		return err
-	}
-	defer runningStatusBlink.Cancel()
-
 	resultChan := make(chan error, 1)
 	logInformation("Listening...")
 	go func() {
 		for {
 			messageType, buf, err := conn.ReadMessage()
 			if err != nil {
-				log.Printf("Error reading:  (%T) %v\n", err, err) // TODO - check for websocket.CloseError and return to trigger reconnecting? (Currently panics for repeated read on failed connection in websocket code)
+				// TODO - check for websocket.CloseError and return to trigger reconnecting?
+				//        (Currently panics for repeated read on failed connection in websocket code)
+				log.Printf("Error reading:  (%T) %v\n", err, err)
 				var closeError *websocket.CloseError
 				var opErr *net.OpError
 				if errors.As(err, &closeError) ||
@@ -213,6 +195,8 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 				shouldReturn = handleButtonEvent(buf, relay, resultChan)
 			case events.EventTypeSnooze:
 				shouldReturn = handleSnoozeEvent(buf)
+			case events.EventTypeUnSnooze:
+				shouldReturn = handleUnSnoozeEvent(buf)
 			default:
 				logError("Unhandled event type: %v\n", event.EventType)
 			}
@@ -221,6 +205,27 @@ func connectAndHandleEvents(interruptChan <-chan os.Signal, address *string, sta
 			}
 		}
 	}()
+
+	// Send hello message with hostname
+	logInformation("Sending hello message")
+	helloMessage := map[string]interface{}{
+		"messageType": "hello",
+		"senderName":  chimeName,
+	}
+	err = conn.WriteJSON(helloMessage)
+	if err != nil {
+		err = fmt.Errorf("failed to send hello message: %v", err)
+		return err
+	}
+
+	// connected to bellpush -> cancel the connecting blink and working blinking
+	connectingStatusBlink.Cancel()
+	runningStatusBlink, err := blinkStatusLed(statusLed, 10*time.Second)
+	if err != nil {
+		err = fmt.Errorf("failed to set status led blinking: %v", err)
+		return err
+	}
+	defer runningStatusBlink.Cancel()
 
 	select {
 	case <-interruptChan:
@@ -247,6 +252,23 @@ func handleSnoozeEvent(buf []byte) bool {
 
 	logInformation("Setting snooze until %s", snoozeEvent.SnoozeExpiry.Format(time.RFC3339))
 	snoozeExpiry = snoozeEvent.SnoozeExpiry
+
+	return false
+}
+func handleUnSnoozeEvent(buf []byte) bool {
+	unsnoozeEvent, err := events.ParseUnSnoozeEventJSON(buf)
+	if err != nil {
+		logError("Error parsing: (%T) %v\n", err, err)
+		return false
+	}
+
+	eventTelemetry := appinsights.NewEventTelemetry("unsnooze-event")
+	eventTelemetry.Properties["id"] = fmt.Sprintf("%v", unsnoozeEvent.ID)
+	telemetryClient.Track(eventTelemetry)
+	telemetryClient.Channel().Flush()
+
+	logInformation("Cancelling snooze")
+	snoozeExpiry = initTime
 
 	return false
 }
