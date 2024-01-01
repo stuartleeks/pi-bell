@@ -23,11 +23,9 @@ linters:
   disable-all: true
   enable:
     - vet
-    - golint
+    - revive
     - gofmt
-    - deadcode
-    - varcheck
-    - structcheck
+    - unused
     - misspell
     - errcheck
     - gosimple

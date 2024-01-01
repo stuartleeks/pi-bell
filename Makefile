@@ -5,10 +5,10 @@ help: ## show this help
 		| column -t -s '|'
 
 run-bellpush: ## run the bellpush
-	go run ./cmd/bellpush/main.go
+	cd cmd/bellpush && go run main.go
 
 run-bellpush-nogpio: ## run the bellpush with gpio disabled
-	DISABLE_GPIO=true go run ./cmd/bellpush/main.go
+	cd cmd/bellpush && DISABLE_GPIO=true go run main.go
 
 build-bellpush: ## build the bellpush
 	GOOS=linux GOARCH=arm GOARM=5 go build -o bellpush ./cmd/bellpush/main.go 
@@ -16,6 +16,10 @@ build-bellpush: ## build the bellpush
 
 run-chime: ## run the chime (set DOORBELL)
 	go run ./cmd/chime/main.go --addr=${DOORBELL}
+
+run-chime-nogpio: ## run the chime (set DOORBELL)
+	DISABLE_GPIO=true go run ./cmd/chime/main.go --addr=${DOORBELL}
+
 
 build-chime: ## build the chime
 	GOOS=linux GOARCH=arm GOARM=5 go build -o chime ./cmd/chime/main.go
