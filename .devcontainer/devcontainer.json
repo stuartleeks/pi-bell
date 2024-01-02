@@ -5,9 +5,12 @@
 	"image": "mcr.microsoft.com/devcontainers/base:jammy",
 	"features": {
 		"ghcr.io/devcontainers/features/go:1": {
-			"version":"1.19"
+			"version":"1.20"
 		},
-		"ghcr.io/stuartleeks/dev-container-features/shell-history:0": {}
+		"ghcr.io/stuartleeks/dev-container-features/shell-history:0": {},
+		"ghcr.io/devcontainers-contrib/features/zig": {
+			"version": "0.11.0"
+		}
 	}
 
 	// Features to add to the dev container. More info: https://containers.dev/features.

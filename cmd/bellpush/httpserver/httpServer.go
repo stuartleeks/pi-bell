@@ -286,6 +286,20 @@ func (b *BellPushHTTPServer) httpDoorbellNotifications(w http.ResponseWriter, r 
 	}
 }
 
+func (b *BellPushHTTPServer) httpCameraLatest(w http.ResponseWriter, _ *http.Request) {
+	if b.telemetryClient != nil {
+		b.telemetryClient.TrackEvent("cameraLatest")
+		b.telemetryClient.Channel().Flush()
+	}
+	latestImage := b.BellPush.GetWebcamFrame()
+	w.Header().Add("Content-Type", "image/jpeg")
+	_, err := w.Write(latestImage)
+	if err != nil {
+		log.Printf("Error writing image: %v\n", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
 func (b *BellPushHTTPServer) ListenAndServe(addr string) error {
 	http.HandleFunc("/doorbell", b.httpDoorbellNotifications)
 	http.HandleFunc("/ping", b.httpPing)
@@ -295,6 +309,7 @@ func (b *BellPushHTTPServer) ListenAndServe(addr string) error {
 	http.HandleFunc("/button/push", b.httpButtonPush)
 	http.HandleFunc("/button/release", b.httpButtonRelease)
 	http.HandleFunc("/button/push-release", b.httpButtonPushRelease)
+	http.HandleFunc("/camera/latest", b.httpCameraLatest)
 
 	return http.ListenAndServe(addr, nil)
 }

@@ -22,6 +22,54 @@
 			text-align: left;
 		}
 	</style>
+</head>
+
+<body>
+	<h1>{{ .Title }}</h1>
+	<h2>Bell</h2>
+	<div>
+		<button onclick="ringBell()">Ring bell</button>
+	</div>
+
+	<h2>Connected Chimes:</h2>
+	{{if .Chimes}}
+	<table>
+		<tr>
+			<th>Name</th>
+			<th>Snooze</th>
+		</tr>
+		{{ range .Chimes }}
+		<tr>
+			<td>{{ .Name }}</td>
+			<td>
+				{{ if .SnoozeExpiry }}
+				Snoozing until {{ .SnoozeExpiry }} <button onclick="unsnooze({{ .Name }})">Cancel snooze</button>
+				{{ else }}
+				<button onclick="snooze({{ .Name }}, 30)">30m</button>
+				<button onclick="snooze({{ .Name }}, 60)">1h</button>
+				<button onclick="snooze({{ .Name }}, 90)">1h30</button>
+				<button onclick="snooze({{ .Name }}, 120)">2h</button>
+				{{ end }}
+			</td>
+		</tr>
+		{{ end }}
+	</table>
+	</ul>
+	{{else}}
+	<p>No chimes connected</p>
+	{{end}}
+
+	<h2>Webcam</h2>
+	<div>
+		<img id="webcam-image" src="/camera/latest" alt="Webcam image" width="640" height="480">
+	</div>
+	<div>
+		<button onclick="updateWebcam()">Update webcam image</button>
+	</div>
+	<div>
+		<input type="checkbox" id="webcam-autorefresh"> Auto-refresh
+	</div>
+
 	<script>
 		function snooze(chime, duration) {
 			console.log("Snoozing " + chime + " for " + duration + " minutes");
@@ -64,43 +112,20 @@
 				}
 			});
 		}
+
+		function updateWebcam() {
+			console.log("Updating webcam image");
+			document.getElementById("webcam-image").src = "/camera/latest?" + new Date().getTime();
+		}
+		var webcamInterval = null;
+		document.getElementById("webcam-autorefresh").onchange = function() {
+			if (this.checked) {
+				webcamInterval= setInterval(updateWebcam, 1000);
+			} else {
+				clearInterval(webcamInterval);
+			}
+		}
 	</script>
-</head>
-
-<body>
-	<h1>{{ .Title }}</h1>
-	<h2>Bell</h2>
-	<div>
-		<button onclick="ringBell()">Ring bell</button>
-	</div>
-
-	<h2>Connected Chimes:</h2>
-	{{if .Chimes}}
-	<table>
-		<tr>
-			<th>Name</th>
-			<th>Snooze</th>
-		</tr>
-		{{ range .Chimes }}
-		<tr>
-			<td>{{ .Name }}</td>
-			<td>
-				{{ if .SnoozeExpiry }}
-				Snoozing until {{ .SnoozeExpiry }} <button onclick="unsnooze({{ .Name }})">Cancel snooze</button>
-				{{ else }}
-				<button onclick="snooze({{ .Name }}, 30)">30m</button>
-				<button onclick="snooze({{ .Name }}, 60)">1h</button>
-				<button onclick="snooze({{ .Name }}, 90)">1h30</button>
-				<button onclick="snooze({{ .Name }}, 120)">2h</button>
-				{{ end }}
-			</td>
-		</tr>
-		{{ end }}
-	</table>
-	</ul>
-	{{else}}
-	<p>No chimes connected</p>
-	{{end}}
 
 </body>
 
