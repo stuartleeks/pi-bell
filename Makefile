@@ -50,6 +50,8 @@ rsync-wfpi4:
 	rsync -r . pi@wfpi4:/home/pi/source/pi-bell
 rsync-raspberrypi:
 	rsync -r . pi@raspberrypi:/home/pi/source/pi-bell
+rsync-pibell-0:
+	rsync -r . pi@pibell-0:/home/pi/source/pi-bell
 rsync-pibell-1:
 	rsync -r . pi@pibell-1:/home/pi/source/pi-bell
 rsync-pibell-2:
