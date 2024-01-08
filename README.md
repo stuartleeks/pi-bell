@@ -81,6 +81,16 @@ sudo journalctl | grep bellpush
 sudo journalctl -fe
 ```
 
+To list video devices, 
+
+```bash
+sudo apt-get install v4l-utils
+
+v4l2-ctl --list-devices
+
+v4l2-ctl --info -d /dev/video0
+```
+
 ## Running interactively
 
 To run the bellpush binary, run:

@@ -10,8 +10,12 @@ run-bellpush: ## run the bellpush
 run-bellpush-nogpio: ## run the bellpush with gpio disabled
 	cd cmd/bellpush && DISABLE_GPIO=true go run main.go
 
+run-bellpush-nogpio-nowebcam: ## run the bellpush with gpio disabled
+	cd cmd/bellpush && DISABLE_GPIO=true DISABLE_WEBCAM=true go run main.go
+
 build-bellpush: ## build the bellpush
-	GOOS=linux GOARCH=arm GOARM=5 go build -o bellpush ./cmd/bellpush/main.go 
+	# Using zig to cross compile for arm: https://github.com/vladimirvivien/go4vl/tree/main/examples#cross-compile-with-zig-toolchain
+	GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=1 CC="zig cc -target arm-linux-musleabihf" CXX="zig c++ -target arm-linux-musleabihf" go build -o bellpush ./cmd/bellpush/main.go 
 
 
 run-chime: ## run the chime (set DOORBELL)
@@ -42,8 +46,8 @@ install: build-bellpush build-chime ## install the bellpush and chime
 
 
 
-rsync-wfpi: 
-	rsync -r . pi@wfpi:/home/pi/source/pi-bell
+rsync-wfpi4: 
+	rsync -r . pi@wfpi4:/home/pi/source/pi-bell
 rsync-raspberrypi:
 	rsync -r . pi@raspberrypi:/home/pi/source/pi-bell
 rsync-pibell-1:

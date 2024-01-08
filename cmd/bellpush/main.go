@@ -37,6 +37,10 @@ func main() {
 
 	disableGpioEnv := os.Getenv("DISABLE_GPIO")
 	disableGpio := disableGpioEnv == "true"
+
+	disableWebcamEnv := os.Getenv("DISABLE_WEBCAM")
+	disableWebcam := disableWebcamEnv == "true"
+
 	bellpush := bellpush.NewBellPush(telemetryClient)
 
 	if !disableGpio {
@@ -67,10 +71,22 @@ func main() {
 		bellpush.StartStdioReader()
 	}
 
+	var err error
+	if disableWebcam {
+		err = bellpush.StartFakeCameraCapture()
+	} else {
+		err = bellpush.StartCameraCapture()
+	}
+	if err != nil {
+		telemetryClient.TrackException(err)
+		telemetryClient.Channel().Flush()
+		panic(err)
+	}
+
 	bellpushHTTPServer := httpserver.NewBellPushHTTPServer(bellpush, telemetryClient)
 
 	fmt.Println("Starting server...")
-	err := bellpushHTTPServer.ListenAndServe("0.0.0.0:8080")
+	err = bellpushHTTPServer.ListenAndServe("0.0.0.0:8080")
 	bellpush.Stop()
 	healthTicker.Stop()
 	healthTickerDone <- true
