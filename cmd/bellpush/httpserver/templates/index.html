@@ -120,13 +120,21 @@
 			document.getElementById("webcam-image").src = "/camera/latest?" + new Date().getTime();
 		}
 		var webcamInterval = null;
-		document.getElementById("webcam-autorefresh").onchange = function() {
+		const webcamAutoRefreshElement = document.getElementById("webcam-autorefresh");
+		var currentUrl = new URL(window.location);
+		webcamAutoRefreshElement.checked = (currentUrl.searchParams.get("autorefresh") ?? "true") === "true";
+		webcamAutoRefreshElement.onchange = function () {
 			if (this.checked) {
-				webcamInterval= setInterval(updateWebcam, 1000);
+				currentUrl.searchParams.delete("autorefresh");
 			} else {
-				clearInterval(webcamInterval);
+				currentUrl.searchParams.set("autorefresh", "false");
 			}
+			window.location.assign(currentUrl.toString());
 		}
+		if (webcamAutoRefreshElement.checked) {
+			webcamInterval = setInterval(updateWebcam, 1000);
+		}
+
 	</script>
 
 </body>
