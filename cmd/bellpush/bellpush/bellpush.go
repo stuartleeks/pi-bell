@@ -50,7 +50,7 @@ func (b *BellPush) StartGpio() error {
 	defer raspberryPi.Finalize() // nolint:errcheck
 
 	button := gpio.NewButtonDriver(raspberryPi, buttonPinNumber)
-	err := button.On(gpio.ButtonPush, func(s interface{}) {
+	err := button.On(gpio.ButtonPush, func(_ interface{}) {
 		err := b.BroadcastEvent(events.NewButtonEvent(events.ButtonPressed, "bellpush"))
 		if err != nil {
 			log.Printf("Error broadcasting button pressed event: %v\n", err)
@@ -63,7 +63,7 @@ func (b *BellPush) StartGpio() error {
 		b.telemetryClient.Channel().Flush()
 		return fmt.Errorf("error setting up button push handler: %w", err)
 	}
-	err = button.On(gpio.ButtonRelease, func(s interface{}) {
+	err = button.On(gpio.ButtonRelease, func(_ interface{}) {
 		err2 := b.BroadcastEvent(events.NewButtonEvent(events.ButtonReleased, "bellpush"))
 		if err2 != nil {
 			log.Printf("Error broadcasting button released event: %v\n", err)

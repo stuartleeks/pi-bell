@@ -26,7 +26,7 @@ run-chime-nogpio: ## run the chime (set DOORBELL)
 
 
 build-chime: ## build the chime
-	GOOS=linux GOARCH=arm GOARM=5 go build -o chime ./cmd/chime/main.go
+	GOOS=linux GOARCH=arm GOARM=6 go build -o chime ./cmd/chime/main.go
 
 fmt: ## go fmt
 	find . -name '*.go' | grep -v vendor | xargs gofmt -s -w
@@ -51,11 +51,11 @@ rsync-wfpi4:
 rsync-raspberrypi:
 	rsync -r . pi@raspberrypi:/home/pi/source/pi-bell
 rsync-pibell-0:
-	rsync -r . pi@pibell-0:/home/pi/source/pi-bell
+	rsync -r . pi@pibell-0.lan:/home/pi/source/pi-bell
 rsync-pibell-1:
 	rsync -r . pi@pibell-1:/home/pi/source/pi-bell
 rsync-pibell-2:
-	rsync -r . pi@pibell-2:/home/pi/source/pi-bell
+	rsync -r . pi@pibell-2.lanx:/home/pi/source/pi-bell
 rsync-pibell-3:
 	rsync -r . pi@pibell-3:/home/pi/source/pi-bell
 

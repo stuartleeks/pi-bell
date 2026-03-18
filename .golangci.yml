@@ -1,34 +1,39 @@
-run:
-  deadline: "5m"
-  skip-files: []
-
-linters-settings:
-  govet:
-    check-shadowing: true
-
-  gocyclo:
-    min-complexity: 12.0
-
-  maligned:
-    suggest-new: true
-
-  goconst:
-    min-len: 3.0
-    min-occurrences: 3.0
-
-  misspell:
-    locale: "US"
-
+version: "2"
 linters:
-  disable-all: true
+  default: none
   enable:
-    - vet
-    - revive
-    - gofmt
-    - unused
-    - misspell
     - errcheck
-    - gosimple
     - govet
     - ineffassign
-  
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocyclo:
+      min-complexity: 12
+    misspell:
+      locale: US
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
