@@ -10,6 +10,7 @@ import (
 	"image/jpeg"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
@@ -33,6 +34,7 @@ type BellPush struct {
 	telemetryClient appinsights.TelemetryClient
 	chimes          map[string]ChimeInfo
 	stopProcessing  bool
+	webcamMu        sync.RWMutex
 	webcamFrame     []byte
 }
 
@@ -114,13 +116,13 @@ func (b *BellPush) StartStdioReader() {
 	}()
 }
 
-func (b *BellPush) StartCameraCapture() error {
+func (b *BellPush) StartCameraCapture(fps uint32) error {
 	devName := "/dev/video0"
 	// open device
 	device, err := device.Open(
 		devName,
 		device.WithPixFormat(v4l2.PixFormat{PixelFormat: v4l2.PixelFmtMJPEG, Width: 640, Height: 480}),
-		device.WithFPS(1),
+		device.WithFPS(fps),
 	)
 	if err != nil {
 		log.Fatalf("failed to open device: %s", err)
@@ -136,11 +138,12 @@ func (b *BellPush) StartCameraCapture() error {
 
 	go func() {
 		for frame := range device.GetOutput() {
+			b.webcamMu.Lock()
 			b.webcamFrame = frame
+			b.webcamMu.Unlock()
 			if b.stopProcessing {
 				break
 			}
-			time.Sleep(1 * time.Second)
 		}
 
 		stop()
@@ -196,7 +199,9 @@ func (b *BellPush) StartFakeCameraCapture() error {
 				log.Printf("Error encoding fake frame: %v\n", err)
 				continue
 			}
+			b.webcamMu.Lock()
 			b.webcamFrame = buf.Bytes()
+			b.webcamMu.Unlock()
 			time.Sleep(1 * time.Second)
 		}
 	}()
@@ -208,6 +213,8 @@ func (b *BellPush) Stop() {
 }
 
 func (b *BellPush) GetWebcamFrame() []byte {
+	b.webcamMu.RLock()
+	defer b.webcamMu.RUnlock()
 	return b.webcamFrame
 }
 

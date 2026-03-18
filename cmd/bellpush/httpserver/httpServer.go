@@ -292,7 +292,8 @@ func (b *BellPushHTTPServer) httpCameraLatest(w http.ResponseWriter, _ *http.Req
 		b.telemetryClient.Channel().Flush()
 	}
 	latestImage := b.BellPush.GetWebcamFrame()
-	w.Header().Add("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "image/jpeg")
 	_, err := w.Write(latestImage)
 	if err != nil {
 		log.Printf("Error writing image: %v\n", err)

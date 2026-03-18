@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/stuartleeks/pi-bell/cmd/bellpush/bellpush"
@@ -40,6 +41,16 @@ func main() {
 
 	disableWebcamEnv := os.Getenv("DISABLE_WEBCAM")
 	disableWebcam := disableWebcamEnv == "true"
+	webcamFPSEnv := os.Getenv("WEBCAM_FPS")
+	webcamFPS := 2
+	if webcamFPSEnv != "" {
+		parsedFPS, err := strconv.Atoi(webcamFPSEnv)
+		if err != nil || parsedFPS < 1 {
+			fmt.Printf("Invalid WEBCAM_FPS=%q, defaulting to %d\n", webcamFPSEnv, webcamFPS)
+		} else {
+			webcamFPS = parsedFPS
+		}
+	}
 
 	bellpush := bellpush.NewBellPush(telemetryClient)
 
@@ -75,7 +86,7 @@ func main() {
 	if disableWebcam {
 		err = bellpush.StartFakeCameraCapture()
 	} else {
-		err = bellpush.StartCameraCapture()
+		err = bellpush.StartCameraCapture(uint32(webcamFPS))
 	}
 	if err != nil {
 		telemetryClient.TrackException(err)
