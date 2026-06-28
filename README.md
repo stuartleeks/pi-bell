@@ -46,6 +46,18 @@ sudo systemctl enable pibell-bellpush.service
 
 At this point the pibell-bellpush service is installed and will start when you restart your pi.
 
+#### Webhook notifications
+
+The bellpush can fire an HTTP webhook on each button press to notify external systems (e.g. for mobile push notifications).
+
+Set the `WEBHOOK_URL` environment variable to enable this:
+
+```env
+WEBHOOK_URL=http://dash-api-go:8080/push/notify
+```
+
+When set, a `POST` request with a JSON payload is sent to the URL on every button press. If `WEBHOOK_URL` is not set, webhook functionality is disabled and the bellpush behaves as before.
+
 ### chime
 
 Before continuing, edit the `/usr/local/bin/pi-bell/chime.env` to set the address of the bellpush the chime should connect to. In the example below the chime will attempt to connect to port `8080` on the `pibell-1`.

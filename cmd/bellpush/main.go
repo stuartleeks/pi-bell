@@ -52,7 +52,15 @@ func main() {
 		}
 	}
 
-	bellpush := bellpush.NewBellPush(telemetryClient)
+	webhookURL := os.Getenv("WEBHOOK_URL")
+	if webhookURL != "" {
+		fmt.Printf("Webhook enabled: %s\n", webhookURL)
+	} else {
+		fmt.Println("Webhook disabled (WEBHOOK_URL not set)")
+	}
+	webhook := bellpush.NewWebhookNotifier(webhookURL, telemetryClient)
+
+	bellpush := bellpush.NewBellPush(telemetryClient, webhook)
 
 	if !disableGpio {
 		err := bellpush.StartGpio()

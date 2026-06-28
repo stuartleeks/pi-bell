@@ -36,12 +36,14 @@ type BellPush struct {
 	stopProcessing  bool
 	webcamMu        sync.RWMutex
 	webcamFrame     []byte
+	webhook         *WebhookNotifier
 }
 
-func NewBellPush(telemetryClient appinsights.TelemetryClient) *BellPush {
+func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNotifier) *BellPush {
 	return &BellPush{
 		telemetryClient: telemetryClient,
 		chimes:          make(map[string]ChimeInfo),
+		webhook:         webhook,
 	}
 }
 
@@ -246,6 +248,11 @@ func (b *BellPush) BroadcastEvent(event events.Event) error {
 		}
 		b.telemetryClient.Track(eventTelemetry)
 		b.telemetryClient.Channel().Flush()
+	}
+
+	// Fire webhook on button press events
+	if buttonEvent, ok := event.(*events.ButtonEvent); ok && buttonEvent.ButtonEventType == events.ButtonPressed {
+		go b.webhook.Notify()
 	}
 
 	for _, client := range b.chimes {
