@@ -16,10 +16,12 @@ import (
 type RTSPServer struct {
 	server *gortsplib.Server
 	stream *gortsplib.ServerStream
+	desc   *description.Session
 	media  *description.Media
 
 	mu      sync.Mutex
 	encoder *rtpmjpeg.Encoder
+	started bool
 }
 
 // NewRTSPServer creates a new RTSP server listening on the given port.
@@ -32,7 +34,7 @@ func NewRTSPServer(port int) *RTSPServer {
 		Formats: []format.Format{mjpegFormat},
 	}
 
-	desc := &description.Session{
+	rs.desc = &description.Session{
 		Medias: []*description.Media{rs.media},
 	}
 
@@ -40,10 +42,6 @@ func NewRTSPServer(port int) *RTSPServer {
 		Handler:     rs,
 		RTSPAddress: fmt.Sprintf(":%d", port),
 	}
-
-	// Create the stream upfront so it's available for DESCRIBE/SETUP
-	// before any frames are published.
-	rs.stream = gortsplib.NewServerStream(rs.server, desc)
 
 	return rs
 }
@@ -60,12 +58,30 @@ func (rs *RTSPServer) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to start RTSP server: %w", err)
 	}
+
+	// Create the stream after the server has started so that gortsplib has
+	// applied its default configuration (e.g. the RTCP sender report period).
+	// NewServerStream spawns an RTCP sender goroutine that calls
+	// time.NewTicker with the server's senderReportPeriod, which is only
+	// defaulted to a non-zero value inside server.Start(). Creating the
+	// stream beforehand would pass a zero interval and panic.
+	rs.stream = gortsplib.NewServerStream(rs.server, rs.desc)
+	rs.started = true
+
 	return nil
 }
 
 // Stop gracefully shuts down the RTSP server.
 func (rs *RTSPServer) Stop() {
-	rs.stream.Close()
+	if !rs.started {
+		// Start() was never called (or it failed), so there is nothing to
+		// shut down. Calling server.Close() here would dereference a nil
+		// cancel func and panic.
+		return
+	}
+	if rs.stream != nil {
+		rs.stream.Close()
+	}
 	rs.server.Close()
 }
 
