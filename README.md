@@ -58,6 +58,28 @@ WEBHOOK_URL=http://dash-api-go:8080/push/notify
 
 When set, a `POST` request with a JSON payload is sent to the URL on every button press. If `WEBHOOK_URL` is not set, webhook functionality is disabled and the bellpush behaves as before.
 
+#### RTSP camera stream
+
+The bellpush exposes the camera as an RTSP stream so that standard video clients (VLC, Home Assistant, NVR software, etc.) can view the feed directly.
+
+The stream is enabled by default on port `8554`. Configure it with the `RTSP_PORT` environment variable:
+
+```env
+# Use a custom port
+RTSP_PORT=9554
+
+# Disable RTSP entirely
+RTSP_PORT=0
+```
+
+Connect with any RTSP client, e.g.:
+
+```bash
+vlc rtsp://<pi-ip>:8554/camera
+```
+
+The stream uses MJPEG over RTP (RFC 2435). If the frame rate appears low, increase `WEBCAM_FPS` (default is 2).
+
 ### chime
 
 Before continuing, edit the `/usr/local/bin/pi-bell/chime.env` to set the address of the bellpush the chime should connect to. In the example below the chime will attempt to connect to port `8080` on the `pibell-1`.

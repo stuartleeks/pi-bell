@@ -10,6 +10,7 @@ import (
 
 	"github.com/stuartleeks/pi-bell/cmd/bellpush/bellpush"
 	"github.com/stuartleeks/pi-bell/cmd/bellpush/httpserver"
+	"github.com/stuartleeks/pi-bell/cmd/bellpush/rtspserver"
 
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 )
@@ -62,6 +63,40 @@ func main() {
 
 	bellpush := bellpush.NewBellPush(telemetryClient, webhook)
 
+	// RTSP server (optional)
+	rtspPort := 8554
+	rtspPortEnv := os.Getenv("RTSP_PORT")
+	var rtsp *rtspserver.RTSPServer
+	if rtspPortEnv == "" || rtspPortEnv == "0" {
+		if rtspPortEnv == "0" {
+			fmt.Println("RTSP disabled (RTSP_PORT=0)")
+		} else {
+			// Default: enable RTSP on port 8554
+			rtsp = rtspserver.NewRTSPServer(rtspPort)
+		}
+	} else {
+		parsed, err := strconv.Atoi(rtspPortEnv)
+		if err != nil || parsed < 1 {
+			fmt.Printf("Invalid RTSP_PORT=%q, defaulting to %d\n", rtspPortEnv, rtspPort)
+		} else {
+			rtspPort = parsed
+		}
+		if rtspPort > 0 {
+			rtsp = rtspserver.NewRTSPServer(rtspPort)
+		}
+	}
+	if rtsp != nil {
+		err := rtsp.Start()
+		if err != nil {
+			fmt.Printf("Failed to start RTSP server: %v\n", err)
+			telemetryClient.TrackException(err)
+			telemetryClient.Channel().Flush()
+		} else {
+			fmt.Printf("RTSP server started on port %d (rtsp://<host>:%d/camera)\n", rtspPort, rtspPort)
+			bellpush.SetOnFrame(rtsp.PublishFrame)
+		}
+	}
+
 	if !disableGpio {
 		err := bellpush.StartGpio()
 		if err != nil {
@@ -107,6 +142,9 @@ func main() {
 	fmt.Println("Starting server...")
 	err = bellpushHTTPServer.ListenAndServe("0.0.0.0:8080")
 	bellpush.Stop()
+	if rtsp != nil {
+		rtsp.Stop()
+	}
 	healthTicker.Stop()
 	healthTickerDone <- true
 	if err != nil {

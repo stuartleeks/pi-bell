@@ -37,6 +37,7 @@ type BellPush struct {
 	webcamMu        sync.RWMutex
 	webcamFrame     []byte
 	webhook         *WebhookNotifier
+	onFrame         func([]byte)
 }
 
 func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNotifier) *BellPush {
@@ -45,6 +46,11 @@ func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNo
 		chimes:          make(map[string]ChimeInfo),
 		webhook:         webhook,
 	}
+}
+
+// SetOnFrame sets a callback that is called with each new JPEG frame.
+func (b *BellPush) SetOnFrame(fn func([]byte)) {
+	b.onFrame = fn
 }
 
 // Set up Raspberry Pi button handler for bell push
@@ -143,6 +149,9 @@ func (b *BellPush) StartCameraCapture(fps uint32) error {
 			b.webcamMu.Lock()
 			b.webcamFrame = frame
 			b.webcamMu.Unlock()
+			if b.onFrame != nil {
+				b.onFrame(frame)
+			}
 			if b.stopProcessing {
 				break
 			}
@@ -204,6 +213,9 @@ func (b *BellPush) StartFakeCameraCapture() error {
 			b.webcamMu.Lock()
 			b.webcamFrame = buf.Bytes()
 			b.webcamMu.Unlock()
+			if b.onFrame != nil {
+				b.onFrame(buf.Bytes())
+			}
 			time.Sleep(1 * time.Second)
 		}
 	}()
