@@ -1,9 +1,12 @@
 package rtspserver
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/bluenviron/gortsplib/v4"
 	"github.com/bluenviron/gortsplib/v4/pkg/base"
@@ -11,6 +14,9 @@ import (
 	"github.com/bluenviron/gortsplib/v4/pkg/format"
 	"github.com/bluenviron/gortsplib/v4/pkg/format/rtpmjpeg"
 )
+
+// mjpegClockRate is the RTP clock rate for MJPEG (RFC 2435), in Hz.
+const mjpegClockRate = 90000
 
 // RTSPServer wraps a gortsplib.Server to stream MJPEG frames over RTSP.
 type RTSPServer struct {
@@ -22,6 +28,14 @@ type RTSPServer struct {
 	mu      sync.Mutex
 	encoder *rtpmjpeg.Encoder
 	started bool
+
+	// Timestamp tracking. The rtpmjpeg encoder leaves the RTP timestamp at
+	// zero, so we must populate it ourselves. MJPEG uses a 90 kHz clock; the
+	// timestamp for each frame is derived from the elapsed time since the
+	// first published frame, offset by a random initial value.
+	initialTimestamp uint32
+	startTime        time.Time
+	haveStartTime    bool
 }
 
 // NewRTSPServer creates a new RTSP server listening on the given port.
@@ -53,6 +67,13 @@ func (rs *RTSPServer) Start() error {
 		return fmt.Errorf("failed to create MJPEG RTP encoder: %w", err)
 	}
 	rs.encoder = enc
+
+	// Pick a random initial RTP timestamp, as recommended by RFC 3550.
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Errorf("failed to generate initial RTP timestamp: %w", err)
+	}
+	rs.initialTimestamp = binary.BigEndian.Uint32(b[:])
 
 	err = rs.server.Start()
 	if err != nil {
@@ -102,7 +123,20 @@ func (rs *RTSPServer) PublishFrame(jpegData []byte) {
 		return
 	}
 
+	// The encoder does not set the RTP timestamp, so derive one from the
+	// elapsed wall-clock time using the 90 kHz MJPEG clock. All packets that
+	// make up a single frame share the same timestamp; it advances between
+	// frames so clients (e.g. ffmpeg) see monotonically increasing timestamps.
+	now := time.Now()
+	if !rs.haveStartTime {
+		rs.startTime = now
+		rs.haveStartTime = true
+	}
+	elapsed := now.Sub(rs.startTime)
+	timestamp := rs.initialTimestamp + uint32(elapsed.Seconds()*mjpegClockRate)
+
 	for _, pkt := range packets {
+		pkt.Timestamp = timestamp
 		err = rs.stream.WritePacketRTP(rs.media, pkt)
 		if err != nil {
 			return
