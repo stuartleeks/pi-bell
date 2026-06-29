@@ -48,7 +48,7 @@ func TestNotify_SendsCorrectRequest(t *testing.T) {
 	}
 }
 
-func TestNotify_NilNotifierIsNoOp(t *testing.T) {
+func TestNotify_NilNotifierIsNoOp(_ *testing.T) {
 	var w *WebhookNotifier
 	// Should not panic
 	w.Notify()
@@ -61,8 +61,8 @@ func TestNewWebhookNotifier_EmptyURLReturnsNil(t *testing.T) {
 	}
 }
 
-func TestNotify_NonSuccessStatusDoesNotPanic(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestNotify_NonSuccessStatusDoesNotPanic(_ *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer server.Close()
@@ -72,7 +72,7 @@ func TestNotify_NonSuccessStatusDoesNotPanic(t *testing.T) {
 	notifier.Notify()
 }
 
-func TestNotify_UnreachableURLDoesNotPanic(t *testing.T) {
+func TestNotify_UnreachableURLDoesNotPanic(_ *testing.T) {
 	notifier := NewWebhookNotifier("http://127.0.0.1:1", nil)
 	// Should not panic
 	notifier.Notify()
