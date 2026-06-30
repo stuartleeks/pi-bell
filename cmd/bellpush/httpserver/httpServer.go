@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"sync/atomic"
 	"time"
 
@@ -33,13 +35,27 @@ var templates = template.Must(template.ParseFS(f, "templates/*"))
 type BellPushHTTPServer struct {
 	telemetryClient appinsights.TelemetryClient
 	BellPush        *bellpush.BellPush
+	// Go2rtcURL is the base URL of the go2rtc sidecar (e.g. http://localhost:1984).
+	// When empty, the legacy in-process camera capture is used.
+	Go2rtcURL string
+	// Go2rtcStream is the go2rtc stream name used for snapshot/live view.
+	Go2rtcStream string
+	httpClient   *http.Client
 }
 
 func NewBellPushHTTPServer(bellPush *bellpush.BellPush, telemetryClient appinsights.TelemetryClient) *BellPushHTTPServer {
 	return &BellPushHTTPServer{
 		telemetryClient: telemetryClient,
 		BellPush:        bellPush,
+		httpClient:      &http.Client{Timeout: 5 * time.Second},
 	}
+}
+
+// SetGo2rtc configures bellpush to delegate camera concerns to a go2rtc sidecar.
+// When baseURL is empty, the legacy in-process camera behavior is preserved.
+func (b *BellPushHTTPServer) SetGo2rtc(baseURL string, stream string) {
+	b.Go2rtcURL = baseURL
+	b.Go2rtcStream = stream
 }
 
 func (b *BellPushHTTPServer) httpHomePage(w http.ResponseWriter, _ *http.Request) {
@@ -60,8 +76,10 @@ func (b *BellPushHTTPServer) httpHomePage(w http.ResponseWriter, _ *http.Request
 		chimeInfos = append(chimeInfos, c)
 	}
 	if err := templates.ExecuteTemplate(w, "index.html", map[string]interface{}{
-		"Title":  "Home Page",
-		"Chimes": chimeInfos,
+		"Title":         "Home Page",
+		"Chimes":        chimeInfos,
+		"Go2rtcBaseURL": b.Go2rtcURL,
+		"Go2rtcStream":  b.Go2rtcStream,
 	}); err != nil {
 		log.Printf("Error executing template: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -291,6 +309,12 @@ func (b *BellPushHTTPServer) httpCameraLatest(w http.ResponseWriter, _ *http.Req
 		b.telemetryClient.TrackEvent("cameraLatest")
 		b.telemetryClient.Channel().Flush()
 	}
+
+	if b.Go2rtcURL != "" {
+		b.serveGo2rtcSnapshot(w)
+		return
+	}
+
 	latestImage := b.BellPush.GetWebcamFrame()
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "image/jpeg")
@@ -298,6 +322,31 @@ func (b *BellPushHTTPServer) httpCameraLatest(w http.ResponseWriter, _ *http.Req
 	if err != nil {
 		log.Printf("Error writing image: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+// serveGo2rtcSnapshot proxies a JPEG snapshot from the go2rtc sidecar, preserving the
+// existing image/jpeg + no-store contract that the external doorbell-notifier relies on.
+func (b *BellPushHTTPServer) serveGo2rtcSnapshot(w http.ResponseWriter) {
+	snapshotURL := fmt.Sprintf("%s/api/frame.jpeg?src=%s", b.Go2rtcURL, url.QueryEscape(b.Go2rtcStream))
+	resp, err := b.httpClient.Get(snapshotURL)
+	if err != nil {
+		log.Printf("Error fetching go2rtc snapshot: %v\n", err)
+		http.Error(w, fmt.Sprintf("Error fetching go2rtc snapshot: %v", err), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Unexpected status from go2rtc snapshot: %d\n", resp.StatusCode)
+		http.Error(w, fmt.Sprintf("Unexpected status from go2rtc snapshot: %d", resp.StatusCode), http.StatusBadGateway)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "image/jpeg")
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("Error writing go2rtc snapshot: %v\n", err)
 	}
 }
 

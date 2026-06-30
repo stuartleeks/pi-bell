@@ -64,6 +64,18 @@
 	{{end}}
 
 	<h2>Webcam</h2>
+	{{ if .Go2rtcBaseURL }}
+	<div>
+		<script src="{{ .Go2rtcBaseURL }}/video-rtc.js" type="module"></script>
+		<video-stream
+			src="{{ .Go2rtcBaseURL }}/api/ws?src={{ .Go2rtcStream }}"
+			style="width: 640px; max-width: 100%; aspect-ratio: 4 / 3; background: #000;">
+		</video-stream>
+	</div>
+	<div>
+		<button onclick="window.open('/camera/latest?' + new Date().getTime(), '_blank')">Open snapshot</button>
+	</div>
+	{{ else }}
 	<div>
 		<img id="webcam-image" src="/camera/latest" alt="Webcam image" width="640" height="480">
 	</div>
@@ -73,6 +85,7 @@
 	<div>
 		<input type="checkbox" id="webcam-autorefresh"> Auto-refresh
 	</div>
+	{{ end }}
 
 	<script>
 		function snooze(chime, duration) {
@@ -121,20 +134,22 @@
 			console.log("Updating webcam image");
 			document.getElementById("webcam-image").src = "/camera/latest?" + new Date().getTime();
 		}
-		var webcamInterval = null;
 		const webcamAutoRefreshElement = document.getElementById("webcam-autorefresh");
-		var currentUrl = new URL(window.location);
-		webcamAutoRefreshElement.checked = (currentUrl.searchParams.get("autorefresh") ?? "true") === "true";
-		webcamAutoRefreshElement.onchange = function () {
-			if (this.checked) {
-				currentUrl.searchParams.delete("autorefresh");
-			} else {
-				currentUrl.searchParams.set("autorefresh", "false");
+		if (webcamAutoRefreshElement) {
+			var webcamInterval = null;
+			var currentUrl = new URL(window.location);
+			webcamAutoRefreshElement.checked = (currentUrl.searchParams.get("autorefresh") ?? "true") === "true";
+			webcamAutoRefreshElement.onchange = function () {
+				if (this.checked) {
+					currentUrl.searchParams.delete("autorefresh");
+				} else {
+					currentUrl.searchParams.set("autorefresh", "false");
+				}
+				window.location.assign(currentUrl.toString());
 			}
-			window.location.assign(currentUrl.toString());
-		}
-		if (webcamAutoRefreshElement.checked) {
-			webcamInterval = setInterval(updateWebcam, 1000);
+			if (webcamAutoRefreshElement.checked) {
+				webcamInterval = setInterval(updateWebcam, 1000);
+			}
 		}
 
 	</script>

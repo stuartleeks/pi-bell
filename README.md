@@ -80,6 +80,41 @@ vlc rtsp://<pi-ip>:8554/camera
 
 The stream uses MJPEG over RTP (RFC 2435). If the frame rate appears low, increase `WEBCAM_FPS` (default is 2).
 
+#### go2rtc sidecar (ONVIF / WebRTC / HLS)
+
+For low-latency browser live view and for adoption into NVR software such as **UniFi Protect**, the bellpush can delegate all camera concerns to a [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar running on the same Pi. go2rtc owns the camera device (hardware H.264, no transcode) and exposes ONVIF + RTSP + WebRTC + MSE + HLS + a JPEG snapshot endpoint from a single binary.
+
+The `install.sh` script downloads the `go2rtc` binary for the Pi's architecture alongside `bellpush`/`chime`, together with a sample `go2rtc.yaml` and a `pibell-go2rtc.service` unit.
+
+Run go2rtc as a service:
+
+```bash
+sudo cp /usr/local/bin/pi-bell/pibell-go2rtc.service /etc/systemd/system/pibell-go2rtc.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now pibell-go2rtc.service
+```
+
+Then point bellpush at go2rtc by setting these environment variables (in `bellpush.env`):
+
+```env
+# Base URL of the go2rtc sidecar API
+GO2RTC_URL=http://localhost:1984
+# go2rtc stream name (defaults to "doorbell")
+GO2RTC_STREAM=doorbell
+```
+
+When `GO2RTC_URL` is set, bellpush:
+
+- does **not** capture the camera in-process and does **not** start its built-in RTSP server (only one process may hold the V4L2 H.264 encoder, so go2rtc is the sole owner);
+- proxies `GET /camera/latest` to go2rtc's `/api/frame.jpeg` snapshot, preserving the existing `image/jpeg` + `no-store` contract used by external consumers;
+- renders a WebRTC live player (with automatic MSE/HLS fallback) in the web UI.
+
+When `GO2RTC_URL` is unset, the legacy in-process camera capture and RTSP server behave exactly as before.
+
+go2rtc's WebUI/API is on `http://<pi>:1984/`, RTSP on `:8554`, and WebRTC on `:8555`. The **ONVIF server is served on the API port** (`:1984`) at `/onvif/device_service` — there is no separate ONVIF port. Edit `/usr/local/bin/pi-bell/go2rtc.yaml` to adjust the capture command (e.g. `raspivid` on Buster, `libcamera-vid` on Bullseye, `rpicam-vid` on Bookworm), resolution, and frame rate.
+
+**Adopting in UniFi Protect:** go2rtc does **not** respond to ONVIF WS-Discovery, so Protect won't auto-find it — add it manually as a third-party / ONVIF camera. Protect's dialog labels the field as an *IP address* but accepts `host:port`, so enter **`<pi>:1984`** (the ONVIF service is on the go2rtc API port; entering only the IP makes Protect assume port 80 and fail with a misleading "invalid credentials" error). Leave go2rtc auth unset and enter any **dummy** username/password in Protect — go2rtc 1.9.4 doesn't parse the ONVIF WS-Security token Protect sends, so configuring real `api.username`/`password` would instead cause "invalid credentials". Protect then records the RTSP stream go2rtc advertises (`:8554`).
+
 ### chime
 
 Before continuing, edit the `/usr/local/bin/pi-bell/chime.env` to set the address of the bellpush the chime should connect to. In the example below the chime will attempt to connect to port `8080` on the `pibell-1`.

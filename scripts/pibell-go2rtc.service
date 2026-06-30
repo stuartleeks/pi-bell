@@ -1,0 +1,15 @@
+[Unit]
+Description=pi-bell go2rtc sidecar (camera ONVIF/RTSP/WebRTC/HLS)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/pi-bell/go2rtc -config /usr/local/bin/pi-bell/go2rtc.yaml
+WorkingDirectory=/usr/local/bin/pi-bell
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

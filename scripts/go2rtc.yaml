@@ -1,0 +1,32 @@
+# log:
+#   level: trace
+streams:
+  doorbell:
+    # Hardware H.264 straight from the Pi camera, no transcode.
+    # Pick the line matching your Raspberry Pi OS version (camera tooling differs):
+    #
+    # Buster (legacy camera stack — raspivid):  <-- active (this Pi)
+    - exec:raspivid -t 0 -w 1280 -h 720 -fps 15 -n -ih -o - #killsignal=9
+    # Bullseye (libcamera stack — libcamera-vid):
+    # - exec:libcamera-vid -t 0 --inline --width 1280 --height 720 --framerate 15 --codec h264 --nopreview -o - #killsignal=9
+    # Bookworm (rpicam-apps — rpicam-vid):
+    # - exec:rpicam-vid -t 0 --inline --width 1280 --height 720 --framerate 15 --codec h264 --nopreview -o - #killsignal=9
+    #
+    # Dev/test fallback without a camera (uncomment to use a test pattern):
+    # - exec:ffmpeg -hide_banner -re -f lavfi -i testsrc -c:v libx264 -f mpegts -#video=h264
+
+api:
+  listen: ":1984"      # HTTP API + WebUI: WebRTC/HLS/MSE, snapshot, AND ONVIF server
+                       # ONVIF device service: http://<pi>:1984/onvif/device_service
+  # TODO - uncomment and configure
+  # username: someuser
+  # password: somepass
+rtsp:
+  listen: ":8554"      # RTSP server (ONVIF advertises this for the video stream)
+webrtc:
+  listen: ":8555"      # WebRTC TCP/UDP
+
+# NOTE: go2rtc serves its ONVIF server on the `api` listener above (:1984) under
+# /onvif/ — there is no separate ONVIF port/listener. go2rtc also does NOT respond to
+# WS-Discovery (UDP 3702), so ONVIF clients (incl. UniFi Protect) cannot auto-discover
+# it: add it manually by URL, e.g. http://<pi>:1984/onvif/device_service.

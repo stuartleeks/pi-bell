@@ -37,7 +37,7 @@ checks: ## run checks/linter
 build-all: checks build-bellpush build-chime
 
 release: build-all ## build the release archive
-	tar -czvf pi-bell.tar.gz chime bellpush scripts/pibell-bellpush.service scripts/pibell-chime.service scripts/chime.env
+	tar -czvf pi-bell.tar.gz chime bellpush scripts/pibell-bellpush.service scripts/pibell-chime.service scripts/pibell-go2rtc.service scripts/go2rtc.yaml scripts/chime.env
 
 install: build-bellpush build-chime ## install the bellpush and chime
 	mkdir -p /usr/local/bin/pi-bell

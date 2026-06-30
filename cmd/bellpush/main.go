@@ -63,26 +63,43 @@ func main() {
 
 	bellpush := bellpush.NewBellPush(telemetryClient, webhook)
 
-	// RTSP server (optional)
+	// go2rtc sidecar delegation (optional).
+	// When GO2RTC_URL is set, bellpush delegates all camera concerns to the go2rtc
+	// sidecar: it does not capture the camera in-process and does not start the
+	// built-in RTSP server (avoids contention over the single V4L2 H.264 encoder).
+	go2rtcURL := os.Getenv("GO2RTC_URL")
+	go2rtcStream := os.Getenv("GO2RTC_STREAM")
+	if go2rtcStream == "" {
+		go2rtcStream = "doorbell"
+	}
+	go2rtcEnabled := go2rtcURL != ""
+	if go2rtcEnabled {
+		fmt.Printf("go2rtc enabled: %s (stream %q) - in-process camera capture and RTSP server disabled\n", go2rtcURL, go2rtcStream)
+	}
+
+	// RTSP server (optional). Skipped entirely when go2rtc owns the camera and
+	// exposes its own RTSP server.
 	rtspPort := 8554
 	rtspPortEnv := os.Getenv("RTSP_PORT")
 	var rtsp *rtspserver.RTSPServer
-	if rtspPortEnv == "" || rtspPortEnv == "0" {
-		if rtspPortEnv == "0" {
-			fmt.Println("RTSP disabled (RTSP_PORT=0)")
+	if !go2rtcEnabled {
+		if rtspPortEnv == "" || rtspPortEnv == "0" {
+			if rtspPortEnv == "0" {
+				fmt.Println("RTSP disabled (RTSP_PORT=0)")
+			} else {
+				// Default: enable RTSP on port 8554
+				rtsp = rtspserver.NewRTSPServer(rtspPort)
+			}
 		} else {
-			// Default: enable RTSP on port 8554
-			rtsp = rtspserver.NewRTSPServer(rtspPort)
-		}
-	} else {
-		parsed, err := strconv.Atoi(rtspPortEnv)
-		if err != nil || parsed < 1 {
-			fmt.Printf("Invalid RTSP_PORT=%q, defaulting to %d\n", rtspPortEnv, rtspPort)
-		} else {
-			rtspPort = parsed
-		}
-		if rtspPort > 0 {
-			rtsp = rtspserver.NewRTSPServer(rtspPort)
+			parsed, err := strconv.Atoi(rtspPortEnv)
+			if err != nil || parsed < 1 {
+				fmt.Printf("Invalid RTSP_PORT=%q, defaulting to %d\n", rtspPortEnv, rtspPort)
+			} else {
+				rtspPort = parsed
+			}
+			if rtspPort > 0 {
+				rtsp = rtspserver.NewRTSPServer(rtspPort)
+			}
 		}
 	}
 	if rtsp != nil {
@@ -126,10 +143,13 @@ func main() {
 	}
 
 	var err error
-	if disableWebcam {
-		err = bellpush.StartFakeCameraCapture()
-	} else {
-		err = bellpush.StartCameraCapture(uint32(webcamFPS))
+	if !go2rtcEnabled {
+		// go2rtc, when enabled, owns the camera; otherwise capture in-process.
+		if disableWebcam {
+			err = bellpush.StartFakeCameraCapture()
+		} else {
+			err = bellpush.StartCameraCapture(uint32(webcamFPS))
+		}
 	}
 	if err != nil {
 		telemetryClient.TrackException(err)
@@ -138,6 +158,9 @@ func main() {
 	}
 
 	bellpushHTTPServer := httpserver.NewBellPushHTTPServer(bellpush, telemetryClient)
+	if go2rtcEnabled {
+		bellpushHTTPServer.SetGo2rtc(go2rtcURL, go2rtcStream)
+	}
 
 	fmt.Println("Starting server...")
 	err = bellpushHTTPServer.ListenAndServe("0.0.0.0:8080")

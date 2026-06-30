@@ -26,5 +26,29 @@ mkdir -p "$INSTALL_FOLDER"
 tar -xzvf /tmp/pi-bell.tar.gz -C "$INSTALL_FOLDER"
 
 
+echo "Downloading go2rtc..."
+# go2rtc is shipped as its own prebuilt binary (not built by the pi-bell Makefile),
+# so fetch the release binary that matches this Pi's architecture.
+GO2RTC_VERSION="v1.9.4"
+case "$(uname -m)" in
+	armv6l)
+		GO2RTC_ARCH="arm" ;;
+	armv7l)
+		GO2RTC_ARCH="arm" ;;
+	aarch64 | arm64)
+		GO2RTC_ARCH="arm64" ;;
+	x86_64 | amd64)
+		GO2RTC_ARCH="amd64" ;;
+	*)
+		echo "Unknown architecture $(uname -m); skipping go2rtc download." >&2
+		GO2RTC_ARCH="" ;;
+esac
+
+if [ -n "$GO2RTC_ARCH" ]; then
+	wget -O "$INSTALL_FOLDER/go2rtc" "https://github.com/AlexxIT/go2rtc/releases/download/${GO2RTC_VERSION}/go2rtc_linux_${GO2RTC_ARCH}"
+	chmod +x "$INSTALL_FOLDER/go2rtc"
+	echo "Installed go2rtc ${GO2RTC_VERSION} (${GO2RTC_ARCH})"
+fi
+
 echo "Add $INSTALL_FOLDER to your PATH"
 
