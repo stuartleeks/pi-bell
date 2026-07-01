@@ -58,6 +58,12 @@ WEBHOOK_URL=http://dash-api-go:8080/push/notify
 
 When set, a `POST` request with a JSON payload is sent to the URL on every button press. If `WEBHOOK_URL` is not set, webhook functionality is disabled and the bellpush behaves as before.
 
+Motion detected/stopped events (from the PIR sensor) also fire the webhook by default, with `"type":"motion"` and a `"subtype"` of `"detected"` or `"stopped"` in the payload. Set `WEBHOOK_MOTION_ENABLE=false` to stop motion events from firing the webhook while still allowing button-press notifications:
+
+```env
+WEBHOOK_MOTION_ENABLE=false
+```
+
 #### go2rtc sidecar (ONVIF / WebRTC / HLS / RTSP)
 
 For low-latency browser live view and for adoption into NVR software such as **UniFi Protect**, the bellpush can delegate all camera concerns to a [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar running on the same Pi. go2rtc owns the camera device (hardware H.264, no transcode) and exposes ONVIF + RTSP + WebRTC + MSE + HLS + a JPEG snapshot endpoint from a single binary.

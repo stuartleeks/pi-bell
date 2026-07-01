@@ -11,9 +11,9 @@ import (
 
 var webhookPayload = []byte(`{"type":"doorbell","title":"Doorbell","body":"Someone is at the door","url":"/doorbell/camera"}`)
 
-var motionDetectedPayload = []byte(`{"type":"motion","title":"Motion detected","body":"Movement detected at the door","url":"/doorbell/camera"}`)
+var motionDetectedPayload = []byte(`{"type":"motion","subtype":"detected","title":"Motion detected","body":"Movement detected at the door","url":"/doorbell/camera"}`)
 
-var motionStoppedPayload = []byte(`{"type":"motion","title":"Motion stopped","body":"Movement stopped at the door","url":"/doorbell/camera"}`)
+var motionStoppedPayload = []byte(`{"type":"motion","subtype":"stopped","title":"Motion stopped","body":"Movement stopped at the door","url":"/doorbell/camera"}`)
 
 // WebhookNotifier sends a fire-and-forget HTTP POST to a configured URL.
 // A nil *WebhookNotifier is safe to call; all methods are no-ops.
@@ -21,11 +21,17 @@ type WebhookNotifier struct {
 	url             string
 	client          *http.Client
 	telemetryClient appinsights.TelemetryClient
+	// motionEnabled controls whether NotifyMotionDetected/NotifyMotionStopped
+	// actually fire the webhook. Button-press notifications (Notify) are
+	// unaffected. Defaults to true when set via NewWebhookNotifier.
+	motionEnabled bool
 }
 
 // NewWebhookNotifier creates a WebhookNotifier for the given URL.
 // Returns nil if url is empty, making the webhook a no-op.
-func NewWebhookNotifier(url string, telemetryClient appinsights.TelemetryClient) *WebhookNotifier {
+// motionEnabled controls whether motion detected/stopped events fire the
+// webhook; button-press events always fire regardless of this setting.
+func NewWebhookNotifier(url string, motionEnabled bool, telemetryClient appinsights.TelemetryClient) *WebhookNotifier {
 	if url == "" {
 		return nil
 	}
@@ -35,6 +41,7 @@ func NewWebhookNotifier(url string, telemetryClient appinsights.TelemetryClient)
 			Timeout: 5 * time.Second,
 		},
 		telemetryClient: telemetryClient,
+		motionEnabled:   motionEnabled,
 	}
 }
 
@@ -43,13 +50,21 @@ func (w *WebhookNotifier) Notify() {
 	w.notify(webhookPayload)
 }
 
-// NotifyMotionDetected sends a motion-detected webhook POST. Safe to call on a nil receiver.
+// NotifyMotionDetected sends a motion-detected webhook POST. Safe to call on a
+// nil receiver. No-op if motion notifications are disabled (motionEnabled=false).
 func (w *WebhookNotifier) NotifyMotionDetected() {
+	if w == nil || !w.motionEnabled {
+		return
+	}
 	w.notify(motionDetectedPayload)
 }
 
-// NotifyMotionStopped sends a motion-stopped webhook POST. Safe to call on a nil receiver.
+// NotifyMotionStopped sends a motion-stopped webhook POST. Safe to call on a
+// nil receiver. No-op if motion notifications are disabled (motionEnabled=false).
 func (w *WebhookNotifier) NotifyMotionStopped() {
+	if w == nil || !w.motionEnabled {
+		return
+	}
 	w.notify(motionStoppedPayload)
 }
 

@@ -20,7 +20,7 @@ func TestNotify_SendsCorrectRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	notifier := NewWebhookNotifier(server.URL, nil)
+	notifier := NewWebhookNotifier(server.URL, true, nil)
 	notifier.Notify()
 
 	if gotMethod != http.MethodPost {
@@ -66,7 +66,7 @@ func TestNotifyMotionDetected_SendsCorrectRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	notifier := NewWebhookNotifier(server.URL, nil)
+	notifier := NewWebhookNotifier(server.URL, true, nil)
 	notifier.NotifyMotionDetected()
 
 	if gotMethod != http.MethodPost {
@@ -83,6 +83,9 @@ func TestNotifyMotionDetected_SendsCorrectRequest(t *testing.T) {
 	if payload["type"] != "motion" {
 		t.Errorf("expected type motion, got %s", payload["type"])
 	}
+	if payload["subtype"] != "detected" {
+		t.Errorf("expected subtype detected, got %s", payload["subtype"])
+	}
 	if payload["title"] != "Motion detected" {
 		t.Errorf("expected title 'Motion detected', got %s", payload["title"])
 	}
@@ -97,7 +100,7 @@ func TestNotifyMotionStopped_SendsCorrectRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	notifier := NewWebhookNotifier(server.URL, nil)
+	notifier := NewWebhookNotifier(server.URL, true, nil)
 	notifier.NotifyMotionStopped()
 
 	var payload map[string]string
@@ -107,8 +110,28 @@ func TestNotifyMotionStopped_SendsCorrectRequest(t *testing.T) {
 	if payload["type"] != "motion" {
 		t.Errorf("expected type motion, got %s", payload["type"])
 	}
+	if payload["subtype"] != "stopped" {
+		t.Errorf("expected subtype stopped, got %s", payload["subtype"])
+	}
 	if payload["title"] != "Motion stopped" {
 		t.Errorf("expected title 'Motion stopped', got %s", payload["title"])
+	}
+}
+
+func TestNotifyMotion_DisabledIsNoOp(t *testing.T) {
+	called := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		called = true
+	}))
+	defer server.Close()
+
+	notifier := NewWebhookNotifier(server.URL, false, nil)
+	notifier.NotifyMotionDetected()
+	notifier.NotifyMotionStopped()
+
+	if called {
+		t.Error("expected no request to be sent when motion notifications are disabled")
 	}
 }
 
@@ -120,7 +143,7 @@ func TestNotifyMotion_NilNotifierIsNoOp(_ *testing.T) {
 }
 
 func TestNewWebhookNotifier_EmptyURLReturnsNil(t *testing.T) {
-	notifier := NewWebhookNotifier("", nil)
+	notifier := NewWebhookNotifier("", true, nil)
 	if notifier != nil {
 		t.Error("expected nil notifier for empty URL")
 	}
@@ -132,13 +155,13 @@ func TestNotify_NonSuccessStatusDoesNotPanic(_ *testing.T) {
 	}))
 	defer server.Close()
 
-	notifier := NewWebhookNotifier(server.URL, nil)
+	notifier := NewWebhookNotifier(server.URL, true, nil)
 	// Should not panic
 	notifier.Notify()
 }
 
 func TestNotify_UnreachableURLDoesNotPanic(_ *testing.T) {
-	notifier := NewWebhookNotifier("http://127.0.0.1:1", nil)
+	notifier := NewWebhookNotifier("http://127.0.0.1:1", true, nil)
 	// Should not panic
 	notifier.Notify()
 }

@@ -97,7 +97,21 @@ func main() {
 	} else {
 		fmt.Println("Webhook disabled (WEBHOOK_URL not set)")
 	}
-	webhook := bellpush.NewWebhookNotifier(webhookURL, telemetryClient)
+
+	// WEBHOOK_MOTION_ENABLE controls whether motion detected/stopped events
+	// fire the webhook (button-press events always fire). Defaults to true.
+	webhookMotionEnabled := true
+	if v := os.Getenv("WEBHOOK_MOTION_ENABLE"); v != "" {
+		webhookMotionEnabled = v == "true"
+	}
+	if webhookURL != "" {
+		if webhookMotionEnabled {
+			fmt.Println("Webhook motion notifications enabled")
+		} else {
+			fmt.Println("Webhook motion notifications disabled (WEBHOOK_MOTION_ENABLE=false)")
+		}
+	}
+	webhook := bellpush.NewWebhookNotifier(webhookURL, webhookMotionEnabled, telemetryClient)
 
 	// PIR motion sensor tuning (optional). Defaults are applied for any unset
 	// or invalid values inside the bellpush package.
