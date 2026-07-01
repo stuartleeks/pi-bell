@@ -23,7 +23,11 @@ var telemetryClient appinsights.TelemetryClient
 //   - PIR_QUEUE_LEN: number of samples averaged together
 //   - PIR_SAMPLE_RATE_HZ: samples per second
 //   - PIR_THRESHOLD: fraction (0-1) of high samples required for motion
-//   - PIR_HOLD_TIME_SECONDS: quiet time before motion is reported as stopped
+//
+// There is deliberately no "hold time"/cooldown tunable: motion is reported as
+// stopped as soon as the smoothed value drops back below threshold, mirroring
+// gpiozero's MotionSensor. If a PIR proves too twitchy, increase PIR_QUEUE_LEN
+// and/or PIR_SAMPLE_RATE_HZ to widen the smoothing window instead.
 func parseMotionConfig() bellpush.MotionConfig {
 	var config bellpush.MotionConfig
 
@@ -48,14 +52,6 @@ func parseMotionConfig() bellpush.MotionConfig {
 			fmt.Printf("Invalid PIR_THRESHOLD=%q, using default\n", v)
 		}
 	}
-	if v := os.Getenv("PIR_HOLD_TIME_SECONDS"); v != "" {
-		if s, err := strconv.Atoi(v); err == nil && s >= 0 {
-			config.HoldTime = time.Duration(s) * time.Second
-		} else {
-			fmt.Printf("Invalid PIR_HOLD_TIME_SECONDS=%q, using default\n", v)
-		}
-	}
-
 	return config
 }
 
@@ -106,6 +102,8 @@ func main() {
 	// PIR motion sensor tuning (optional). Defaults are applied for any unset
 	// or invalid values inside the bellpush package.
 	motionConfig := parseMotionConfig()
+
+	fmt.Printf("Motion config: QueueLen=%d, SampleRate(ms)=%d, Threshold=%f\n", motionConfig.QueueLen, motionConfig.SampleRate.Milliseconds(), motionConfig.Threshold)
 
 	bellpush := bellpush.NewBellPush(telemetryClient, webhook)
 	bellpush.SetMotionConfig(motionConfig)

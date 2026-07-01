@@ -2,25 +2,34 @@ package bellpush
 
 import (
 	"log"
-	"math"
 	"sync"
 	"time"
 )
 
-// Default motion sensor smoothing parameters. These mirror a stable gpiozero
+// Default motion sensor smoothing parameters. These mirror gpiozero's
 // MotionSensor configuration (queue_len=10, sample_rate=10, threshold=0.5):
 // the sensor is sampled 10 times a second, the most recent 10 samples (1s) are
 // averaged, and motion is considered active when more than half are "high".
 //
-// defaultMotionHoldTime adds a cooldown ("linger") before motion is reported as
-// stopped. Many PIR modules in non-retriggering mode pulse on/off while a person
-// is still present; the hold time bridges those gaps so a continuous presence
-// produces a single detected/stopped pair rather than rapid repeats.
+// Deliberately, there is no separate "hold time"/cooldown layered on top of
+// the window. An earlier version of this code added a long (10s) quiet period
+// that had to elapse after the window cleared before "stopped" was reported,
+// intended to bridge the on/off pulsing of non-retriggering PIR modules.
+// Comparing against a reference gpiozero implementation showed that gpiozero
+// itself has no such hold time - it fires when_no_motion the instant the
+// smoothed value drops back below threshold - and that the extra cooldown was
+// actively harmful: while waiting out the (much longer than the PIR's own
+// hardware retrigger pulse) hold period, the PIR's own hardware could pulse
+// high again, so by the time "stopped" finally fired a fresh hardware pulse
+// had often already arrived, immediately re-triggering "detected" right after
+// "stopped". It also made "stopped" fire several seconds later than gpiozero
+// (~8s vs ~3s), most of which was pure artificial delay rather than sensor
+// behavior. If a PIR proves too twitchy, tune the window itself (increase
+// QueueLen and/or SampleRate) rather than adding a downstream hold timer.
 const (
 	defaultMotionQueueLen   = 10
 	defaultMotionSampleRate = 100 * time.Millisecond // 10 Hz
 	defaultMotionThreshold  = 0.5
-	defaultMotionHoldTime   = 10 * time.Second
 )
 
 // digitalReader reads the digital state of a GPIO pin. *raspi.Adaptor satisfies
@@ -41,9 +50,6 @@ type MotionConfig struct {
 	SampleRate time.Duration
 	// Threshold is the fraction of high samples (0-1) required for motion.
 	Threshold float64
-	// HoldTime is how long the sensor must be continuously quiet before motion
-	// is reported as stopped.
-	HoldTime time.Duration
 }
 
 // motionSensor polls a PIR sensor and applies a rolling-average filter plus a
@@ -69,9 +75,6 @@ func newMotionSensor(reader digitalReader, config MotionConfig, onDetected, onSt
 	if config.Threshold <= 0 || config.Threshold >= 1 {
 		config.Threshold = defaultMotionThreshold
 	}
-	if config.HoldTime <= 0 {
-		config.HoldTime = defaultMotionHoldTime
-	}
 	return &motionSensor{
 		reader:     reader,
 		config:     config,
@@ -91,28 +94,27 @@ func (m *motionSensor) Stop() {
 	close(m.halt)
 }
 
-// run polls the sensor, maintaining a rolling window of the most recent samples.
-// The window is "high" when the fraction of high samples exceeds the threshold,
-// which filters out brief jitter. Motion is reported as detected on the first
-// high window, and stopped only after the window has stayed low continuously for
-// the configured hold time (expressed as a number of samples). This bridges the
-// on/off pulsing of non-retriggering PIR modules so sustained presence yields a
-// single detected/stopped pair.
+// run polls the sensor, maintaining a rolling window of the most recent
+// samples, and fires onDetected/onStopped directly on each edge transition of
+// the windowed average across the threshold. This mirrors gpiozero's
+// SmoothedInputDevice/MotionSensor: the mean of the queued samples ("value")
+// is compared to "threshold" to give "is_active", and when_motion/
+// when_no_motion fire immediately whenever is_active changes - there is no
+// additional debounce/cooldown layered on top of the window. All jitter
+// filtering comes from the size of the window (QueueLen/SampleRate), not from
+// a downstream hold timer; if a PIR proves too twitchy, widen the window
+// rather than adding a hold time back in (see the comment above the defaults
+// for why an earlier hold-time approach was actively counter-productive).
 //
-// To avoid a spurious detection while the sensor settles, events are suppressed
-// until the window has filled and first reported no motion (the equivalent of
-// gpiozero's wait_for_no_motion warm-up).
+// To avoid a spurious detection while the sensor settles, events are
+// suppressed until the window has filled and first reports no motion (the
+// equivalent of gpiozero's wait_for_no_motion warm-up / partial=False
+// behavior).
 func (m *motionSensor) run() {
-	holdSamples := int(math.Ceil(float64(m.config.HoldTime) / float64(m.config.SampleRate)))
-	if holdSamples < 1 {
-		holdSamples = 1
-	}
-
 	samples := make([]int, 0, m.config.QueueLen)
 	sum := 0
 	active := false
 	ready := false
-	quietSamples := 0
 
 	for {
 		value, err := m.reader.DigitalRead(m.config.Pin)
@@ -139,20 +141,12 @@ func (m *motionSensor) run() {
 						ready = true
 						active = false
 					}
-				case windowHigh:
-					quietSamples = 0
-					if !active {
-						active = true
-						m.onDetected()
-					}
-				case active:
-					// Window is low while motion is active: hold until the
-					// sensor has been quiet for the full hold time.
-					quietSamples++
-					if quietSamples >= holdSamples {
-						active = false
-						m.onStopped()
-					}
+				case windowHigh && !active:
+					active = true
+					m.onDetected()
+				case !windowHigh && active:
+					active = false
+					m.onStopped()
 				}
 			}
 		}
