@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/gobuffalo/uuid"
+	"github.com/gofrs/uuid"
 )
 
 // ButtonEventType indicates the type of button event

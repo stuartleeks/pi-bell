@@ -3,7 +3,7 @@ package events
 import (
 	"encoding/json"
 
-	"github.com/gobuffalo/uuid"
+	"github.com/gofrs/uuid"
 )
 
 // StopProcessingEvent is used to indicate that a client processing loop should stop

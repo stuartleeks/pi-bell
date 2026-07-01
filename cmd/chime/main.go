@@ -19,8 +19,8 @@ import (
 	"github.com/stuartleeks/pi-bell/internal/pkg/events"
 	"github.com/stuartleeks/pi-bell/internal/pkg/pi"
 	"github.com/stuartleeks/pi-bell/internal/pkg/timeutils"
-	"gobot.io/x/gobot/drivers/gpio"
-	"gobot.io/x/gobot/platforms/raspi"
+	"gobot.io/x/gobot/v2/drivers/gpio"
+	"gobot.io/x/gobot/v2/platforms/raspi"
 )
 
 var addr = flag.String("addr", "localhost:8080", "http service address")
@@ -344,6 +344,10 @@ func main() {
 		raspberryPi := raspi.NewAdaptor()
 		defer raspberryPi.Finalize() // nolint:errcheck
 
+		if err := raspberryPi.Connect(); err != nil {
+			panic(err) // TODO - don't panic!
+		}
+
 		led = gpio.NewLedDriver(raspberryPi, pi.GPIO17)
 
 		err := led.Start()
@@ -351,13 +355,11 @@ func main() {
 			panic(err) // TODO - don't panic!
 		}
 
-		relay = gpio.NewRelayDriver(raspberryPi, pi.GPIO18)
-		relay.Inverted = true
+		relay = gpio.NewRelayDriver(raspberryPi, pi.GPIO18, gpio.WithRelayInverted())
 		err = relay.Start()
 		if err != nil {
 			panic(err) // TODO - don't panic!
 		}
-		// TODO - when this PR is merged, remove the `replace` in go.mod: https://github.com/hybridgroup/gobot/pull/742
 		err = relay.Off()
 		if err != nil {
 			panic(err) // TODO - don't panic!

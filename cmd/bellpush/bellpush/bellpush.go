@@ -18,8 +18,9 @@ import (
 	"github.com/stuartleeks/pi-bell/internal/pkg/pi"
 	"github.com/vladimirvivien/go4vl/device"
 	"github.com/vladimirvivien/go4vl/v4l2"
-	"gobot.io/x/gobot/drivers/gpio"
-	"gobot.io/x/gobot/platforms/raspi"
+	"gobot.io/x/gobot/v2/drivers/gpio"
+	"gobot.io/x/gobot/v2/platforms/adaptors"
+	"gobot.io/x/gobot/v2/platforms/raspi"
 )
 
 // TODO - make this configurable
@@ -66,11 +67,30 @@ func (b *BellPush) SetOnFrame(fn func([]byte)) {
 // Set up Raspberry Pi button handler for bell push
 func (b *BellPush) StartGpio() error {
 
-	raspberryPi := raspi.NewAdaptor()
-	defer raspberryPi.Finalize() // nolint:errcheck
+	// raspberryPi is intentionally not Finalize()'d here: the button and motion
+	// sensor goroutines started below keep using it for the lifetime of the
+	// process, so finalizing (which unexports pins) as soon as StartGpio
+	// returns would break subsequent reads/writes.
+	raspberryPi := raspi.NewAdaptor(adaptors.WithGpiosPullDown(pirPinNumber, buttonPinNumber))
+
+	if err := raspberryPi.Connect(); err != nil {
+		b.telemetryClient.TrackException(err)
+		b.telemetryClient.Channel().Flush()
+		return fmt.Errorf("error connecting to raspberry pi adaptor: %w", err)
+	}
 
 	button := gpio.NewButtonDriver(raspberryPi, buttonPinNumber)
-	err := button.On(gpio.ButtonPush, func(_ interface{}) {
+
+	// gobot v2 only wires up the driver's Eventer when Start is called, so the
+	// driver must be started before On handlers can be registered.
+	err := button.Start()
+	if err != nil {
+		b.telemetryClient.TrackException(err)
+		b.telemetryClient.Channel().Flush()
+		return fmt.Errorf("error starting button driver: %w", err)
+	}
+
+	err = button.On(gpio.ButtonPush, func(_ interface{}) {
 		err := b.BroadcastEvent(events.NewButtonEvent(events.ButtonPressed, "bellpush"))
 		if err != nil {
 			log.Printf("Error broadcasting button pressed event: %v\n", err)
@@ -95,13 +115,6 @@ func (b *BellPush) StartGpio() error {
 		b.telemetryClient.TrackException(err)
 		b.telemetryClient.Channel().Flush()
 		return fmt.Errorf("error setting up button release handler: %w", err)
-	}
-
-	err = button.Start()
-	if err != nil {
-		b.telemetryClient.TrackException(err)
-		b.telemetryClient.Channel().Flush()
-		return fmt.Errorf("error starting button driver: %w", err)
 	}
 
 	if err := b.startMotionSensor(raspberryPi); err != nil {

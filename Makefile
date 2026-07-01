@@ -33,6 +33,7 @@ fmt: ## go fmt
 
 checks: ## run checks/linter
 	GO111MODULE=on golangci-lint run
+	go test ./...
 
 build-all: checks build-bellpush build-chime
 

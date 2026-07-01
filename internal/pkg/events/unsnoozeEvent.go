@@ -3,7 +3,7 @@ package events
 import (
 	"encoding/json"
 
-	"github.com/gobuffalo/uuid"
+	"github.com/gofrs/uuid"
 )
 
 // UnSnoozeEventType indicates the type of snooze event
