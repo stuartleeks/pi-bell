@@ -17,6 +17,48 @@ import (
 
 var telemetryClient appinsights.TelemetryClient
 
+// parseMotionConfig builds the PIR motion sensor configuration from environment
+// variables, leaving any unset/invalid value as zero so the bellpush package
+// applies its default. Tunables:
+//   - PIR_QUEUE_LEN: number of samples averaged together
+//   - PIR_SAMPLE_RATE_HZ: samples per second
+//   - PIR_THRESHOLD: fraction (0-1) of high samples required for motion
+//   - PIR_HOLD_TIME_SECONDS: quiet time before motion is reported as stopped
+func parseMotionConfig() bellpush.MotionConfig {
+	var config bellpush.MotionConfig
+
+	if v := os.Getenv("PIR_QUEUE_LEN"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			config.QueueLen = n
+		} else {
+			fmt.Printf("Invalid PIR_QUEUE_LEN=%q, using default\n", v)
+		}
+	}
+	if v := os.Getenv("PIR_SAMPLE_RATE_HZ"); v != "" {
+		if hz, err := strconv.Atoi(v); err == nil && hz >= 1 {
+			config.SampleRate = time.Second / time.Duration(hz)
+		} else {
+			fmt.Printf("Invalid PIR_SAMPLE_RATE_HZ=%q, using default\n", v)
+		}
+	}
+	if v := os.Getenv("PIR_THRESHOLD"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f < 1 {
+			config.Threshold = f
+		} else {
+			fmt.Printf("Invalid PIR_THRESHOLD=%q, using default\n", v)
+		}
+	}
+	if v := os.Getenv("PIR_HOLD_TIME_SECONDS"); v != "" {
+		if s, err := strconv.Atoi(v); err == nil && s >= 0 {
+			config.HoldTime = time.Duration(s) * time.Second
+		} else {
+			fmt.Printf("Invalid PIR_HOLD_TIME_SECONDS=%q, using default\n", v)
+		}
+	}
+
+	return config
+}
+
 // // Set up homepage for testing
 //
 //	func httpTestPage(w http.ResponseWriter, r *http.Request) {
@@ -61,7 +103,12 @@ func main() {
 	}
 	webhook := bellpush.NewWebhookNotifier(webhookURL, telemetryClient)
 
+	// PIR motion sensor tuning (optional). Defaults are applied for any unset
+	// or invalid values inside the bellpush package.
+	motionConfig := parseMotionConfig()
+
 	bellpush := bellpush.NewBellPush(telemetryClient, webhook)
+	bellpush.SetMotionConfig(motionConfig)
 
 	// go2rtc sidecar delegation (optional).
 	// When GO2RTC_URL is set, bellpush delegates all camera concerns to the go2rtc

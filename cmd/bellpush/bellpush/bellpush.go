@@ -25,6 +25,9 @@ import (
 // TODO - make this configurable
 const buttonPinNumber string = pi.GPIO17
 
+// TODO - make this configurable
+const pirPinNumber string = pi.GPIO23
+
 type ChimeInfo struct {
 	Events    chan events.Event
 	SnoozeEnd time.Time
@@ -38,6 +41,7 @@ type BellPush struct {
 	webcamFrame     []byte
 	webhook         *WebhookNotifier
 	onFrame         func([]byte)
+	motionConfig    MotionConfig
 }
 
 func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNotifier) *BellPush {
@@ -46,6 +50,12 @@ func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNo
 		chimes:          make(map[string]ChimeInfo),
 		webhook:         webhook,
 	}
+}
+
+// SetMotionConfig overrides the PIR motion sensor tuning parameters. Zero-valued
+// fields keep their defaults. Must be called before StartGpio.
+func (b *BellPush) SetMotionConfig(config MotionConfig) {
+	b.motionConfig = config
 }
 
 // SetOnFrame sets a callback that is called with each new JPEG frame.
@@ -93,6 +103,34 @@ func (b *BellPush) StartGpio() error {
 		b.telemetryClient.Channel().Flush()
 		return fmt.Errorf("error starting button driver: %w", err)
 	}
+
+	if err := b.startMotionSensor(raspberryPi); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// startMotionSensor sets up the PIR motion sensor handler for the bell push.
+// It logs motion start/stop to the console and fires webhook notifications.
+// A rolling-average filter is applied to avoid rapid detected/stopped flapping
+// from a jittery PIR sensor.
+func (b *BellPush) startMotionSensor(raspberryPi *raspi.Adaptor) error {
+	config := b.motionConfig
+	config.Pin = pirPinNumber
+	sensor := newMotionSensor(
+		raspberryPi,
+		config,
+		func() {
+			log.Printf("Motion detected\n")
+			go b.webhook.NotifyMotionDetected()
+		},
+		func() {
+			log.Printf("Motion stopped\n")
+			go b.webhook.NotifyMotionStopped()
+		},
+	)
+	sensor.Start()
 	return nil
 }
 func (b *BellPush) StartStdioReader() {
@@ -118,6 +156,12 @@ func (b *BellPush) StartStdioReader() {
 				if err != nil {
 					log.Printf("Error broadcasting button released event: %v\n", err)
 				}
+			case "m": // motion detected
+				log.Printf("Motion detected\n")
+				go b.webhook.NotifyMotionDetected()
+			case "n": // motion stopped
+				log.Printf("Motion stopped\n")
+				go b.webhook.NotifyMotionStopped()
 			}
 		}
 		log.Printf("Exiting stdio loop\n")

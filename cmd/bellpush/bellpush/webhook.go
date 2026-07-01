@@ -11,6 +11,10 @@ import (
 
 var webhookPayload = []byte(`{"type":"doorbell","title":"Doorbell","body":"Someone is at the door","url":"/doorbell/camera"}`)
 
+var motionDetectedPayload = []byte(`{"type":"motion","title":"Motion detected","body":"Movement detected at the door","url":"/doorbell/camera"}`)
+
+var motionStoppedPayload = []byte(`{"type":"motion","title":"Motion stopped","body":"Movement stopped at the door","url":"/doorbell/camera"}`)
+
 // WebhookNotifier sends a fire-and-forget HTTP POST to a configured URL.
 // A nil *WebhookNotifier is safe to call; all methods are no-ops.
 type WebhookNotifier struct {
@@ -36,13 +40,28 @@ func NewWebhookNotifier(url string, telemetryClient appinsights.TelemetryClient)
 
 // Notify sends the doorbell webhook POST. Safe to call on a nil receiver.
 func (w *WebhookNotifier) Notify() {
+	w.notify(webhookPayload)
+}
+
+// NotifyMotionDetected sends a motion-detected webhook POST. Safe to call on a nil receiver.
+func (w *WebhookNotifier) NotifyMotionDetected() {
+	w.notify(motionDetectedPayload)
+}
+
+// NotifyMotionStopped sends a motion-stopped webhook POST. Safe to call on a nil receiver.
+func (w *WebhookNotifier) NotifyMotionStopped() {
+	w.notify(motionStoppedPayload)
+}
+
+// notify sends the given payload as an HTTP POST. Safe to call on a nil receiver.
+func (w *WebhookNotifier) notify(payload []byte) {
 	if w == nil {
 		return
 	}
 
 	log.Printf("Firing webhook to %s\n", w.url)
 
-	resp, err := w.client.Post(w.url, "application/json", bytes.NewReader(webhookPayload))
+	resp, err := w.client.Post(w.url, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		log.Printf("Webhook error: %v\n", err)
 		w.trackException(err)

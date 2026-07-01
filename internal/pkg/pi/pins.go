@@ -7,6 +7,8 @@ const (
 	GPIO17 string = "11"
 	//GPIO18 represents GPIO pin 18
 	GPIO18 string = "12"
+	//GPIO23 represents GPIO pin 23
+	GPIO23 string = "16"
 
 	//TODO - add other pins!
 )

@@ -54,6 +54,71 @@ func TestNotify_NilNotifierIsNoOp(_ *testing.T) {
 	w.Notify()
 }
 
+func TestNotifyMotionDetected_SendsCorrectRequest(t *testing.T) {
+	var gotMethod, gotContentType string
+	var gotBody []byte
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotContentType = r.Header.Get("Content-Type")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notifier := NewWebhookNotifier(server.URL, nil)
+	notifier.NotifyMotionDetected()
+
+	if gotMethod != http.MethodPost {
+		t.Errorf("expected method POST, got %s", gotMethod)
+	}
+	if gotContentType != "application/json" {
+		t.Errorf("expected content-type application/json, got %s", gotContentType)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(gotBody, &payload); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
+	if payload["type"] != "motion" {
+		t.Errorf("expected type motion, got %s", payload["type"])
+	}
+	if payload["title"] != "Motion detected" {
+		t.Errorf("expected title 'Motion detected', got %s", payload["title"])
+	}
+}
+
+func TestNotifyMotionStopped_SendsCorrectRequest(t *testing.T) {
+	var gotBody []byte
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	notifier := NewWebhookNotifier(server.URL, nil)
+	notifier.NotifyMotionStopped()
+
+	var payload map[string]string
+	if err := json.Unmarshal(gotBody, &payload); err != nil {
+		t.Fatalf("failed to unmarshal body: %v", err)
+	}
+	if payload["type"] != "motion" {
+		t.Errorf("expected type motion, got %s", payload["type"])
+	}
+	if payload["title"] != "Motion stopped" {
+		t.Errorf("expected title 'Motion stopped', got %s", payload["title"])
+	}
+}
+
+func TestNotifyMotion_NilNotifierIsNoOp(_ *testing.T) {
+	var w *WebhookNotifier
+	// Should not panic
+	w.NotifyMotionDetected()
+	w.NotifyMotionStopped()
+}
+
 func TestNewWebhookNotifier_EmptyURLReturnsNil(t *testing.T) {
 	notifier := NewWebhookNotifier("", nil)
 	if notifier != nil {
