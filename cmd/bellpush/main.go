@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/stuartleeks/pi-bell/cmd/bellpush/bellpush"
 	"github.com/stuartleeks/pi-bell/cmd/bellpush/httpserver"
-	"github.com/stuartleeks/pi-bell/cmd/bellpush/rtspserver"
 
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 )
@@ -112,52 +112,29 @@ func main() {
 
 	// go2rtc sidecar delegation (optional).
 	// When GO2RTC_URL is set, bellpush delegates all camera concerns to the go2rtc
-	// sidecar: it does not capture the camera in-process and does not start the
-	// built-in RTSP server (avoids contention over the single V4L2 H.264 encoder).
+	// sidecar: it does not capture the camera in-process (avoids contention over
+	// the single V4L2 H.264 encoder).
+	// GO2RTC_URL must be reachable from bellpush itself (e.g. http://localhost:1984 when
+	// go2rtc runs alongside bellpush on the same Pi) and is used for the /camera/latest
+	// snapshot proxy. GO2RTC_PUBLIC_URL must be reachable from the viewer's browser (e.g.
+	// http://pibell-0:1984) and is embedded into the served HTML for the live view; if
+	// unset, it defaults to GO2RTC_URL, which only works when that address also resolves
+	// correctly from the browser (i.e. it is not "localhost").
 	go2rtcURL := os.Getenv("GO2RTC_URL")
+	go2rtcPublicURL := os.Getenv("GO2RTC_PUBLIC_URL")
 	go2rtcStream := os.Getenv("GO2RTC_STREAM")
 	if go2rtcStream == "" {
 		go2rtcStream = "doorbell"
 	}
 	go2rtcEnabled := go2rtcURL != ""
 	if go2rtcEnabled {
-		fmt.Printf("go2rtc enabled: %s (stream %q) - in-process camera capture and RTSP server disabled\n", go2rtcURL, go2rtcStream)
-	}
-
-	// RTSP server (optional). Skipped entirely when go2rtc owns the camera and
-	// exposes its own RTSP server.
-	rtspPort := 8554
-	rtspPortEnv := os.Getenv("RTSP_PORT")
-	var rtsp *rtspserver.RTSPServer
-	if !go2rtcEnabled {
-		if rtspPortEnv == "" || rtspPortEnv == "0" {
-			if rtspPortEnv == "0" {
-				fmt.Println("RTSP disabled (RTSP_PORT=0)")
-			} else {
-				// Default: enable RTSP on port 8554
-				rtsp = rtspserver.NewRTSPServer(rtspPort)
-			}
-		} else {
-			parsed, err := strconv.Atoi(rtspPortEnv)
-			if err != nil || parsed < 1 {
-				fmt.Printf("Invalid RTSP_PORT=%q, defaulting to %d\n", rtspPortEnv, rtspPort)
-			} else {
-				rtspPort = parsed
-			}
-			if rtspPort > 0 {
-				rtsp = rtspserver.NewRTSPServer(rtspPort)
-			}
+		effectivePublicURL := go2rtcPublicURL
+		if effectivePublicURL == "" {
+			effectivePublicURL = go2rtcURL
 		}
-	}
-	if rtsp != nil {
-		err := rtsp.Start()
-		if err != nil {
-			fmt.Printf("Failed to start RTSP server: %v\n", err)
-			telemetryClient.TrackException(err)
-			telemetryClient.Channel().Flush()
-		} else {
-			fmt.Printf("RTSP server started on port %d (rtsp://<host>:%d/camera)\n", rtspPort, rtspPort)
-			bellpush.SetOnFrame(rtsp.PublishFrame)
+		fmt.Printf("go2rtc enabled: GO2RTC_URL=%q GO2RTC_PUBLIC_URL=%q (effective public URL: %q, stream %q) - in-process camera capture disabled\n", go2rtcURL, go2rtcPublicURL, effectivePublicURL, go2rtcStream)
+		if effectivePublicURL == go2rtcURL && (go2rtcURL == "http://localhost:1984" || strings.Contains(go2rtcURL, "://localhost") || strings.Contains(go2rtcURL, "://127.0.0.1")) {
+			fmt.Println("WARNING: GO2RTC_PUBLIC_URL is not set and GO2RTC_URL uses localhost/127.0.0.1 - the browser live view will not work remotely. Set GO2RTC_PUBLIC_URL to an address reachable from the viewer's browser (e.g. http://pibell-0:1984).")
 		}
 	}
 
@@ -206,15 +183,12 @@ func main() {
 
 	bellpushHTTPServer := httpserver.NewBellPushHTTPServer(bellpush, telemetryClient)
 	if go2rtcEnabled {
-		bellpushHTTPServer.SetGo2rtc(go2rtcURL, go2rtcStream)
+		bellpushHTTPServer.SetGo2rtc(go2rtcURL, go2rtcPublicURL, go2rtcStream)
 	}
 
 	fmt.Println("Starting server...")
 	err = bellpushHTTPServer.ListenAndServe("0.0.0.0:8080")
 	bellpush.Stop()
-	if rtsp != nil {
-		rtsp.Stop()
-	}
 	healthTicker.Stop()
 	healthTickerDone <- true
 	if err != nil {

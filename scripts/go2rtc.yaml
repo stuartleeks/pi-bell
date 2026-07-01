@@ -18,6 +18,10 @@ streams:
 api:
   listen: ":1984"      # HTTP API + WebUI: WebRTC/HLS/MSE, snapshot, AND ONVIF server
                        # ONVIF device service: http://<pi>:1984/onvif/device_service
+  origin: "*"          # Send Access-Control-Allow-Origin: * so the bellpush page (served
+                       # from a different origin, e.g. http://pibell-0:8080) can load
+                       # video-rtc.js and open the WebRTC/HLS stream from go2rtc (:1984)
+                       # without the browser blocking it as a CORS violation.
   # TODO - uncomment and configure
   # username: someuser
   # password: somepass

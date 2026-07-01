@@ -35,9 +35,16 @@ var templates = template.Must(template.ParseFS(f, "templates/*"))
 type BellPushHTTPServer struct {
 	telemetryClient appinsights.TelemetryClient
 	BellPush        *bellpush.BellPush
-	// Go2rtcURL is the base URL of the go2rtc sidecar (e.g. http://localhost:1984).
-	// When empty, the legacy in-process camera capture is used.
+	// Go2rtcURL is the base URL of the go2rtc sidecar as reachable *from bellpush itself*
+	// (e.g. http://localhost:1984). It is used server-side for the /camera/latest snapshot
+	// proxy. When empty, the legacy in-process camera behavior is preserved.
 	Go2rtcURL string
+	// Go2rtcPublicURL is the base URL of the go2rtc sidecar as reachable *from the viewer's
+	// browser* (e.g. http://pibell-0:1984). It is embedded directly into the served HTML so
+	// the browser can load video-rtc.js and open the WebRTC/HLS stream itself. This is
+	// typically different from Go2rtcURL: "localhost" resolves to the go2rtc sidecar from
+	// bellpush's perspective, but to the viewer's own machine from the browser's perspective.
+	Go2rtcPublicURL string
 	// Go2rtcStream is the go2rtc stream name used for snapshot/live view.
 	Go2rtcStream string
 	httpClient   *http.Client
@@ -52,10 +59,19 @@ func NewBellPushHTTPServer(bellPush *bellpush.BellPush, telemetryClient appinsig
 }
 
 // SetGo2rtc configures bellpush to delegate camera concerns to a go2rtc sidecar.
-// When baseURL is empty, the legacy in-process camera behavior is preserved.
-func (b *BellPushHTTPServer) SetGo2rtc(baseURL string, stream string) {
+// baseURL must be reachable from bellpush itself (used for the snapshot proxy); publicURL
+// must be reachable from the viewer's browser (used in the served HTML for the live view).
+// When baseURL is empty, the legacy in-process camera behavior is preserved. When publicURL
+// is empty, baseURL is used for both (only correct if bellpush and the browser can resolve
+// the same address, e.g. neither uses "localhost").
+func (b *BellPushHTTPServer) SetGo2rtc(baseURL string, publicURL string, stream string) {
 	b.Go2rtcURL = baseURL
+	if publicURL == "" {
+		publicURL = baseURL
+	}
+	b.Go2rtcPublicURL = publicURL
 	b.Go2rtcStream = stream
+	log.Printf("go2rtc configured: baseURL=%q publicURL=%q stream=%q\n", b.Go2rtcURL, b.Go2rtcPublicURL, b.Go2rtcStream)
 }
 
 func (b *BellPushHTTPServer) httpHomePage(w http.ResponseWriter, _ *http.Request) {
@@ -78,7 +94,7 @@ func (b *BellPushHTTPServer) httpHomePage(w http.ResponseWriter, _ *http.Request
 	if err := templates.ExecuteTemplate(w, "index.html", map[string]interface{}{
 		"Title":         "Home Page",
 		"Chimes":        chimeInfos,
-		"Go2rtcBaseURL": b.Go2rtcURL,
+		"Go2rtcBaseURL": b.Go2rtcPublicURL,
 		"Go2rtcStream":  b.Go2rtcStream,
 	}); err != nil {
 		log.Printf("Error executing template: %v\n", err)

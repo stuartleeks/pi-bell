@@ -1,5 +1,15 @@
 # Camera ONVIF / WebRTC / HLS via go2rtc
 
+> **Note (outdated):** This plan was written while the in-process `rtspserver`
+> package (bellpush's built-in RTSP server, documented in the now-removed
+> `camera-rtsp.md` plan) still existed as a fallback when `GO2RTC_URL` was
+> unset. That in-process RTSP server and the `SetOnFrame`/`RTSP_PORT` wiring
+> have since been fully removed — go2rtc is now the only way to get an
+> RTSP/WebRTC/HLS stream from the camera. References below to `rtspserver`,
+> "legacy in-process ... RTSP server", or deprecating/removing it in a future
+> phase are historical and no longer apply; everything else describing the
+> go2rtc design remains current.
+
 ## Goal
 
 Expose the doorbell camera to **UniFi Protect (UDM SE)** for adoption/recording, and

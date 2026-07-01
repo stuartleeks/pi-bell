@@ -58,29 +58,7 @@ WEBHOOK_URL=http://dash-api-go:8080/push/notify
 
 When set, a `POST` request with a JSON payload is sent to the URL on every button press. If `WEBHOOK_URL` is not set, webhook functionality is disabled and the bellpush behaves as before.
 
-#### RTSP camera stream
-
-The bellpush exposes the camera as an RTSP stream so that standard video clients (VLC, Home Assistant, NVR software, etc.) can view the feed directly.
-
-The stream is enabled by default on port `8554`. Configure it with the `RTSP_PORT` environment variable:
-
-```env
-# Use a custom port
-RTSP_PORT=9554
-
-# Disable RTSP entirely
-RTSP_PORT=0
-```
-
-Connect with any RTSP client, e.g.:
-
-```bash
-vlc rtsp://<pi-ip>:8554/camera
-```
-
-The stream uses MJPEG over RTP (RFC 2435). If the frame rate appears low, increase `WEBCAM_FPS` (default is 2).
-
-#### go2rtc sidecar (ONVIF / WebRTC / HLS)
+#### go2rtc sidecar (ONVIF / WebRTC / HLS / RTSP)
 
 For low-latency browser live view and for adoption into NVR software such as **UniFi Protect**, the bellpush can delegate all camera concerns to a [go2rtc](https://github.com/AlexxIT/go2rtc) sidecar running on the same Pi. go2rtc owns the camera device (hardware H.264, no transcode) and exposes ONVIF + RTSP + WebRTC + MSE + HLS + a JPEG snapshot endpoint from a single binary.
 
@@ -97,19 +75,26 @@ sudo systemctl enable --now pibell-go2rtc.service
 Then point bellpush at go2rtc by setting these environment variables (in `bellpush.env`):
 
 ```env
-# Base URL of the go2rtc sidecar API
+# Base URL of the go2rtc sidecar API as reachable from bellpush itself (used server-side
+# for the /camera/latest snapshot proxy). go2rtc runs alongside bellpush on the same Pi,
+# so localhost is correct here.
 GO2RTC_URL=http://localhost:1984
+# Base URL of the go2rtc sidecar API as reachable from the *viewer's browser* (used in the
+# served HTML for the live view). This must be an address the browser can resolve - do NOT
+# use localhost/127.0.0.1 here, or the live view will silently fail to load for anyone
+# browsing from a different machine. Defaults to GO2RTC_URL if unset.
+GO2RTC_PUBLIC_URL=http://pibell-0:1984
 # go2rtc stream name (defaults to "doorbell")
 GO2RTC_STREAM=doorbell
 ```
 
 When `GO2RTC_URL` is set, bellpush:
 
-- does **not** capture the camera in-process and does **not** start its built-in RTSP server (only one process may hold the V4L2 H.264 encoder, so go2rtc is the sole owner);
+- does **not** capture the camera in-process (only one process may hold the V4L2 H.264 encoder, so go2rtc is the sole owner);
 - proxies `GET /camera/latest` to go2rtc's `/api/frame.jpeg` snapshot, preserving the existing `image/jpeg` + `no-store` contract used by external consumers;
-- renders a WebRTC live player (with automatic MSE/HLS fallback) in the web UI.
+- renders a WebRTC live player (with automatic MSE/HLS fallback) in the web UI, using `GO2RTC_PUBLIC_URL` (falling back to `GO2RTC_URL`).
 
-When `GO2RTC_URL` is unset, the legacy in-process camera capture and RTSP server behave exactly as before.
+go2rtc is the only supported way to get an RTSP/WebRTC/HLS stream from the camera; when `GO2RTC_URL` is unset the bellpush only captures frames in-process for the `/camera/latest` snapshot endpoint (no RTSP stream is exposed).
 
 go2rtc's WebUI/API is on `http://<pi>:1984/`, RTSP on `:8554`, and WebRTC on `:8555`. The **ONVIF server is served on the API port** (`:1984`) at `/onvif/device_service` — there is no separate ONVIF port. Edit `/usr/local/bin/pi-bell/go2rtc.yaml` to adjust the capture command (e.g. `raspivid` on Buster, `libcamera-vid` on Bullseye, `rpicam-vid` on Bookworm), resolution, and frame rate.
 

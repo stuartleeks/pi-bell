@@ -21,6 +21,15 @@
 		th {
 			text-align: left;
 		}
+
+		/* video-stream is a custom element (go2rtc's video-rtc.js) with no built-in
+		   display rule, so browsers default it to "display: inline" - which causes
+		   width/aspect-ratio in its style attribute to be ignored and the element to
+		   collapse to the height of its (empty) inline content. Force block layout so
+		   the sizing below actually takes effect. */
+		video-stream {
+			display: block;
+		}
 	</style>
 </head>
 
@@ -66,11 +75,23 @@
 	<h2>Webcam</h2>
 	{{ if .Go2rtcBaseURL }}
 	<div>
-		<script src="{{ .Go2rtcBaseURL }}/video-rtc.js" type="module"></script>
+		<!-- video-rtc.js only exports the VideoRTC class; it never registers a custom
+		     element. go2rtc's video-stream.js imports video-rtc.js and is the one that
+		     calls customElements.define('video-stream', ...), so it must be loaded here
+		     for the <video-stream> tag below to do anything. -->
+		<script src="{{ .Go2rtcBaseURL }}/video-stream.js" type="module"></script>
 		<video-stream
-			src="{{ .Go2rtcBaseURL }}/api/ws?src={{ .Go2rtcStream }}"
+			id="go2rtc-video"
 			style="width: 640px; max-width: 100%; aspect-ratio: 4 / 3; background: #000;">
 		</video-stream>
+		<script type="module">
+			// `src` on <video-stream> is a JS property setter (defined via a `set src`
+			// accessor), not a reflected HTML attribute - go2rtc's video-stream.js has no
+			// observedAttributes/attributeChangedCallback to bridge the two. Setting
+			// src="..." directly in the HTML markup is silently ignored, so it must be
+			// assigned as a property here instead for the player to actually connect.
+			document.getElementById("go2rtc-video").src = "{{ .Go2rtcBaseURL }}/api/ws?src={{ .Go2rtcStream }}";
+		</script>
 	</div>
 	<div>
 		<button onclick="window.open('/camera/latest?' + new Date().getTime(), '_blank')">Open snapshot</button>
