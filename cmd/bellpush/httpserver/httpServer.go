@@ -15,6 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 	"github.com/stuartleeks/pi-bell/cmd/bellpush/bellpush"
+	"github.com/stuartleeks/pi-bell/cmd/bellpush/onvif"
 	"github.com/stuartleeks/pi-bell/internal/pkg/events"
 	"github.com/stuartleeks/pi-bell/internal/pkg/timeutils"
 )
@@ -48,6 +49,10 @@ type BellPushHTTPServer struct {
 	// Go2rtcStream is the go2rtc stream name used for snapshot/live view.
 	Go2rtcStream string
 	httpClient   *http.Client
+	// onvifHandler serves the ONVIF Device/Media proxy + Events (PullPoint)
+	// service in front of go2rtc, driven by the bellpush's PIR motion state.
+	// nil when ONVIF is disabled (see SetOnvif).
+	onvifHandler *onvif.Handler
 }
 
 func NewBellPushHTTPServer(bellPush *bellpush.BellPush, telemetryClient appinsights.TelemetryClient) *BellPushHTTPServer {
@@ -72,6 +77,17 @@ func (b *BellPushHTTPServer) SetGo2rtc(baseURL string, publicURL string, stream 
 	b.Go2rtcPublicURL = publicURL
 	b.Go2rtcStream = stream
 	log.Printf("go2rtc configured: baseURL=%q publicURL=%q stream=%q\n", b.Go2rtcURL, b.Go2rtcPublicURL, b.Go2rtcStream)
+}
+
+// SetOnvif enables the ONVIF Device/Media proxy + Events (PullPoint) service on
+// this HTTP server, fronting the go2rtc sidecar (baseURL, as reachable from
+// bellpush itself) so NVR software such as UniFi Protect can be pointed at
+// bellpush and receive motion notifications derived from the PIR sensor.
+// topicMode selects the motion topic advertised/emitted ("cell" or "alarm",
+// see ONVIF_MOTION_TOPIC in the README). Must be called before ListenAndServe.
+func (b *BellPushHTTPServer) SetOnvif(baseURL string, topicMode string) {
+	b.onvifHandler = onvif.NewHandler(baseURL, b.BellPush.MotionState(), topicMode, "")
+	log.Printf("onvif enabled: go2rtc baseURL=%q motionTopic=%q\n", baseURL, topicMode)
 }
 
 func (b *BellPushHTTPServer) httpHomePage(w http.ResponseWriter, _ *http.Request) {
@@ -376,6 +392,12 @@ func (b *BellPushHTTPServer) ListenAndServe(addr string) error {
 	http.HandleFunc("/button/release", b.httpButtonRelease)
 	http.HandleFunc("/button/push-release", b.httpButtonPushRelease)
 	http.HandleFunc("/camera/latest", b.httpCameraLatest)
+
+	if b.onvifHandler != nil {
+		http.HandleFunc("/onvif/device_service", b.onvifHandler.DeviceService)
+		http.HandleFunc("/onvif/media_service", b.onvifHandler.DeviceService)
+		http.HandleFunc("/onvif/event_service", b.onvifHandler.EventService)
+	}
 
 	return http.ListenAndServe(addr, nil)
 }

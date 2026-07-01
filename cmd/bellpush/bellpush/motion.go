@@ -3,6 +3,7 @@ package bellpush
 import (
 	"log"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -162,4 +163,63 @@ func (m *motionSensor) run() {
 			return
 		}
 	}
+}
+
+// MotionState is a concurrency-safe record of the PIR motion sensor's current
+// state (active/inactive) plus the time it last changed. It is shared between
+// the motion sensor callbacks (and the "m"/"n" stdio simulation keys) and any
+// consumer that needs to observe motion transitions - e.g. an ONVIF Events
+// service - without coupling to the webhook notifier.
+type MotionState struct {
+	mu        sync.RWMutex
+	active    bool
+	changedAt time.Time
+	// onChange, if set, is invoked (outside the lock) whenever SetActive
+	// actually changes the active state, with the new state and the time of
+	// the change. Consumers (e.g. an ONVIF PullPoint subscription manager)
+	// can use this to be notified of transitions without polling.
+	onChange func(active bool, changedAt time.Time)
+}
+
+// NewMotionState creates a MotionState initialized to inactive.
+func NewMotionState() *MotionState {
+	return &MotionState{
+		changedAt: time.Now(),
+	}
+}
+
+// SetActive updates the motion state. If the value differs from the current
+// state, changedAt is updated to now and any registered onChange callback is
+// invoked. Calling with the same value is a no-op (no callback, no timestamp
+// change).
+func (s *MotionState) SetActive(active bool) {
+	s.mu.Lock()
+	if s.active == active {
+		s.mu.Unlock()
+		return
+	}
+	s.active = active
+	s.changedAt = time.Now()
+	changedAt := s.changedAt
+	onChange := s.onChange
+	s.mu.Unlock()
+
+	if onChange != nil {
+		onChange(active, changedAt)
+	}
+}
+
+// Get returns the current active state and the time it last changed.
+func (s *MotionState) Get() (active bool, changedAt time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.active, s.changedAt
+}
+
+// OnChange registers a callback invoked whenever the state actually changes.
+// Only one callback is supported; a later call replaces any previous one.
+func (s *MotionState) OnChange(f func(active bool, changedAt time.Time)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onChange = f
 }

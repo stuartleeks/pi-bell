@@ -184,6 +184,28 @@ func main() {
 	bellpushHTTPServer := httpserver.NewBellPushHTTPServer(bellpush, telemetryClient)
 	if go2rtcEnabled {
 		bellpushHTTPServer.SetGo2rtc(go2rtcURL, go2rtcPublicURL, go2rtcStream)
+
+		// ONVIF Events (PullPoint) support for UniFi Protect motion recording.
+		// Defaults to enabled whenever go2rtc is enabled (bellpush fronts go2rtc's
+		// Device/Media ONVIF services and augments them with an Events service fed
+		// by the PIR sensor - see .plans/motion-onvif.md). Set ONVIF_ENABLE=false to
+		// opt out (e.g. when Protect is adopting go2rtc directly for video-only).
+		onvifEnabled := go2rtcEnabled
+		if v := os.Getenv("ONVIF_ENABLE"); v != "" {
+			onvifEnabled = v == "true"
+		}
+		if onvifEnabled {
+			onvifMotionTopic := os.Getenv("ONVIF_MOTION_TOPIC")
+			if onvifMotionTopic != "cell" && onvifMotionTopic != "alarm" {
+				if onvifMotionTopic != "" {
+					fmt.Printf("Invalid ONVIF_MOTION_TOPIC=%q, defaulting to \"cell\"\n", onvifMotionTopic)
+				}
+				onvifMotionTopic = "cell"
+			}
+			bellpushHTTPServer.SetOnvif(go2rtcURL, onvifMotionTopic)
+		} else {
+			fmt.Println("ONVIF disabled (ONVIF_ENABLE=false)")
+		}
 	}
 
 	fmt.Println("Starting server...")

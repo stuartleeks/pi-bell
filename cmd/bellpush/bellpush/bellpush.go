@@ -42,6 +42,7 @@ type BellPush struct {
 	webcamFrame     []byte
 	webhook         *WebhookNotifier
 	motionConfig    MotionConfig
+	motionState     *MotionState
 }
 
 func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNotifier) *BellPush {
@@ -49,7 +50,15 @@ func NewBellPush(telemetryClient appinsights.TelemetryClient, webhook *WebhookNo
 		telemetryClient: telemetryClient,
 		chimes:          make(map[string]ChimeInfo),
 		webhook:         webhook,
+		motionState:     NewMotionState(),
 	}
+}
+
+// MotionState returns the shared PIR motion state. It is updated by the GPIO
+// motion sensor (or the "m"/"n" stdio simulation keys) and can be observed by
+// other consumers (e.g. an ONVIF Events service) independently of the webhook.
+func (b *BellPush) MotionState() *MotionState {
+	return b.motionState
 }
 
 // SetMotionConfig overrides the PIR motion sensor tuning parameters. Zero-valued
@@ -130,10 +139,12 @@ func (b *BellPush) startMotionSensor(raspberryPi *raspi.Adaptor) error {
 		config,
 		func() {
 			log.Printf("Motion detected\n")
+			b.motionState.SetActive(true)
 			go b.webhook.NotifyMotionDetected()
 		},
 		func() {
 			log.Printf("Motion stopped\n")
+			b.motionState.SetActive(false)
 			go b.webhook.NotifyMotionStopped()
 		},
 	)
@@ -165,9 +176,11 @@ func (b *BellPush) StartStdioReader() {
 				}
 			case "m": // motion detected
 				log.Printf("Motion detected\n")
+				b.motionState.SetActive(true)
 				go b.webhook.NotifyMotionDetected()
 			case "n": // motion stopped
 				log.Printf("Motion stopped\n")
+				b.motionState.SetActive(false)
 				go b.webhook.NotifyMotionStopped()
 			}
 		}

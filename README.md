@@ -98,7 +98,25 @@ go2rtc is the only supported way to get an RTSP/WebRTC/HLS stream from the camer
 
 go2rtc's WebUI/API is on `http://<pi>:1984/`, RTSP on `:8554`, and WebRTC on `:8555`. The **ONVIF server is served on the API port** (`:1984`) at `/onvif/device_service` — there is no separate ONVIF port. Edit `/usr/local/bin/pi-bell/go2rtc.yaml` to adjust the capture command (e.g. `raspivid` on Buster, `libcamera-vid` on Bullseye, `rpicam-vid` on Bookworm), resolution, and frame rate.
 
-**Adopting in UniFi Protect:** go2rtc does **not** respond to ONVIF WS-Discovery, so Protect won't auto-find it — add it manually as a third-party / ONVIF camera. Protect's dialog labels the field as an *IP address* but accepts `host:port`, so enter **`<pi>:1984`** (the ONVIF service is on the go2rtc API port; entering only the IP makes Protect assume port 80 and fail with a misleading "invalid credentials" error). Leave go2rtc auth unset and enter any **dummy** username/password in Protect — go2rtc 1.9.4 doesn't parse the ONVIF WS-Security token Protect sends, so configuring real `api.username`/`password` would instead cause "invalid credentials". Protect then records the RTSP stream go2rtc advertises (`:8554`).
+**Adopting in UniFi Protect (video only, no motion):** go2rtc does **not** respond to ONVIF WS-Discovery, so Protect won't auto-find it — add it manually as a third-party / ONVIF camera. Protect's dialog labels the field as an *IP address* but accepts `host:port`, so enter **`<pi>:1984`** (the ONVIF service is on the go2rtc API port; entering only the IP makes Protect assume port 80 and fail with a misleading "invalid credentials" error). Leave go2rtc auth unset and enter any **dummy** username/password in Protect — go2rtc 1.9.4 doesn't parse the ONVIF WS-Security token Protect sends, so configuring real `api.username`/`password` would instead cause "invalid credentials". Protect then records the RTSP stream go2rtc advertises (`:8554`) but has no way to trigger recording from motion, since go2rtc doesn't implement the ONVIF Events service Protect's third-party motion path requires.
+
+#### ONVIF motion → UniFi Protect recording
+
+Since UniFi Protect 5.0.20, Protect can trigger recording on third-party ONVIF cameras via the ONVIF **Events** service (`CreatePullPointSubscription`/`PullMessages`), but go2rtc only implements the Device + Media services, not Events. To bridge this, when `GO2RTC_URL` is set bellpush also acts as an ONVIF "augmenting proxy" in front of go2rtc: it reverse-proxies Device/Media SOAP operations unchanged (go2rtc exposes these at both `/onvif/device_service` *and* `/onvif/media_service`, and bellpush proxies each request to go2rtc at whichever of those two paths it was received on), augments `GetServices`/`GetCapabilities` responses to advertise an Events service, and implements that Events (PullPoint) service itself, fed directly by the PIR motion sensor (the same signal that drives the motion webhook).
+
+```env
+# Enable/disable the ONVIF proxy + Events service. Defaults to enabled whenever
+# GO2RTC_URL is set; set to "false" to opt out (e.g. if Protect should adopt
+# go2rtc directly for video-only, as above).
+ONVIF_ENABLE=true
+# Which motion topic to advertise/emit: "cell" (tns1:RuleEngine/CellMotionDetector/Motion,
+# SimpleItem IsMotion) or "alarm" (tns1:VideoSource/MotionAlarm, SimpleItem State).
+# Which topic Protect's third-party ONVIF path keys on is undocumented - if motion
+# clips aren't appearing on the Protect timeline, flip this and re-test.
+ONVIF_MOTION_TOPIC=cell
+```
+
+**Adopting in UniFi Protect (with motion):** point Protect at **bellpush**, not go2rtc directly - enter **`<pi>:8080`** (bellpush's HTTP port) as the third-party ONVIF camera's address, with the same dummy-credentials caveat as above (bellpush also ignores the WS-Security `UsernameToken`). bellpush proxies live view/snapshot straight through to go2rtc unchanged, so this is a strict superset of adopting go2rtc directly, but now with PIR-driven motion recording.
 
 ### chime
 
